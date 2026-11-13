@@ -3,12 +3,15 @@ import {
   Flame, 
   Code2, 
   Layers, 
-  Cloud, 
   ExternalLink,
   Target,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { TabType } from '../types';
+import { SpotlightCard } from './SpotlightCard';
 
 interface ProgressDashboardProps {
   solvedCount: number;
@@ -35,154 +38,186 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       
       {/* Header Banner */}
-      <div className="glass-panel rounded-3xl p-8 border border-slate-800 bg-gradient-to-r from-slate-900 via-indigo-950/30 to-purple-950/20">
+      <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.22)" className="p-8 border border-white/10 bg-neutral-950/80">
         <div className="max-w-3xl space-y-3">
           <div className="flex items-center space-x-2">
-            <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-semibold">
-              Live Candidate Dashboard
+            <span className="text-xs px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono font-semibold">
+              Live Candidate Telemetry
             </span>
-            <span className="text-xs text-slate-400">Synced to Cloud Firestore</span>
+            <span className="text-xs text-neutral-400 flex items-center space-x-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Real-Time Invariant Tracking</span>
+            </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
-            Your Technical Interview Readiness
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Technical Interview Readiness Matrix
           </h1>
-          <p className="text-sm text-slate-300 leading-relaxed">
-            Stackwa combines algorithmic problem-solving with real-world UI system design so you can excel at both LeetCode rounds and frontend architecture screens.
+          <p className="text-sm text-neutral-300 leading-relaxed">
+            Stackwa synchronizes high-performance algorithmic invariants with full-stack UI architecture. Track your diagnostic progress, master edge-case handling, and rehearse with Socratic AI feedback.
           </p>
         </div>
-      </div>
+      </SpotlightCard>
 
-      {/* Metrics Row */}
+      {/* Metrics Row with Spotlight Effect */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         
         {/* Metric 1: Overall Readiness */}
-        <div className="glass-panel rounded-2xl p-6 border border-indigo-500/20">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Readiness Score</span>
-            <Target className="w-4 h-4 text-indigo-400" />
+        <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.25)" className="p-6">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider font-mono">Readiness Score</span>
+            <Target className="w-4 h-4 text-rose-400" />
           </div>
-          <div className="text-3xl font-extrabold text-white">{overallReadiness}%</div>
-          <div className="mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" style={{ width: `${overallReadiness}%` }} />
+          <div className="text-3xl font-extrabold text-white tracking-tight">{overallReadiness}%</div>
+          <div className="mt-3 h-1.5 bg-neutral-900 rounded-full overflow-hidden border border-white/5">
+            <div 
+              className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full transition-all duration-500" 
+              style={{ width: `${overallReadiness}%` }} 
+            />
           </div>
-          <span className="text-[11px] text-slate-400 mt-2 block">Balanced across DSA & UI Design</span>
-        </div>
+          <span className="text-[11px] text-neutral-400 mt-2 block">Balanced across DSA & UI Architecture</span>
+        </SpotlightCard>
 
         {/* Metric 2: DSA Problems */}
-        <div className="glass-panel rounded-2xl p-6 border border-amber-500/20">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Interview Cake DSA</span>
-            <Code2 className="w-4 h-4 text-amber-400" />
+        <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.2)" className="p-6">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider font-mono">Algorithms Mastered</span>
+            <Code2 className="w-4 h-4 text-rose-400" />
           </div>
-          <div className="text-3xl font-extrabold text-white">{solvedCount} / {totalProblems}</div>
-          <div className="mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div className="h-full bg-amber-500 rounded-full" style={{ width: `${dsaPercent}%` }} />
+          <div className="text-3xl font-extrabold text-white tracking-tight">{solvedCount} / {totalProblems}</div>
+          <div className="mt-3 h-1.5 bg-neutral-900 rounded-full overflow-hidden border border-white/5">
+            <div 
+              className="h-full bg-rose-500 rounded-full transition-all duration-500" 
+              style={{ width: `${dsaPercent}%` }} 
+            />
           </div>
-          <span className="text-[11px] text-slate-400 mt-2 block">{dsaPercent}% algorithm curriculum completed</span>
-        </div>
+          <span className="text-[11px] text-neutral-400 mt-2 block">{dsaPercent}% algorithmic curriculum verified</span>
+        </SpotlightCard>
 
         {/* Metric 3: UI System Designs */}
-        <div className="glass-panel rounded-2xl p-6 border border-purple-500/20">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Mobbin UI Flows</span>
-            <Layers className="w-4 h-4 text-purple-400" />
+        <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.2)" className="p-6">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider font-mono">UI Architecture Flows</span>
+            <Layers className="w-4 h-4 text-rose-400" />
           </div>
-          <div className="text-3xl font-extrabold text-white">{completedFlowsCount} / {totalFlows}</div>
-          <div className="mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div className="h-full bg-purple-500 rounded-full" style={{ width: `${uiPercent}%` }} />
+          <div className="text-3xl font-extrabold text-white tracking-tight">{completedFlowsCount} / {totalFlows}</div>
+          <div className="mt-3 h-1.5 bg-neutral-900 rounded-full overflow-hidden border border-white/5">
+            <div 
+              className="h-full bg-rose-500 rounded-full transition-all duration-500" 
+              style={{ width: `${uiPercent}%` }} 
+            />
           </div>
-          <span className="text-[11px] text-slate-400 mt-2 block">{uiPercent}% frontend system architecture mastered</span>
-        </div>
+          <span className="text-[11px] text-neutral-400 mt-2 block">{uiPercent}% production systems designed</span>
+        </SpotlightCard>
 
         {/* Metric 4: Daily Streak */}
-        <div className="glass-panel rounded-2xl p-6 border border-orange-500/20">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Current Streak</span>
-            <Flame className="w-4 h-4 text-orange-400 fill-orange-400" />
+        <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.2)" className="p-6">
+          <div className="flex items-center justify-between text-neutral-400 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider font-mono">Practice Streak</span>
+            <Flame className="w-4 h-4 text-rose-500 fill-rose-500" />
           </div>
-          <div className="text-3xl font-extrabold text-white">{streakDays} Days</div>
+          <div className="text-3xl font-extrabold text-white tracking-tight">{streakDays} Days</div>
           <div className="mt-3 flex items-center space-x-1">
             {[1, 2, 3, 4, 5, 6, 7].map((d) => (
               <div 
                 key={d} 
-                className={`flex-1 h-1.5 rounded-full ${
-                  d <= streakDays ? 'bg-orange-500' : 'bg-slate-800'
+                className={`flex-1 h-1.5 rounded-full transition-colors ${
+                  d <= streakDays ? 'bg-rose-500 shadow-sm shadow-rose-500/50' : 'bg-neutral-800'
                 }`} 
               />
             ))}
           </div>
-          <span className="text-[11px] text-orange-400 mt-2 block">Keep the momentum going!</span>
-        </div>
+          <span className="text-[11px] text-rose-400 mt-2 block font-medium">Cadence active — keep momentum</span>
+        </SpotlightCard>
 
       </div>
 
-      {/* Quick Launch Cards */}
+      {/* Quick Launch Track Selectors with Magnetic Cursor Spotlight */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* Card 1: Jump into DSA */}
-        <div 
+        {/* Track 1: Jump into DSA */}
+        <SpotlightCard 
+          spotlightColor="rgba(220, 38, 38, 0.25)" 
           onClick={() => setActiveTab('dsa')}
-          className="glass-panel rounded-2xl p-6 border border-slate-800 hover:border-indigo-500/40 cursor-pointer transition group"
+          className="p-7 cursor-pointer group hover:border-rose-500/40"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Code2 className="w-5 h-5" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-600/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+              <Code2 className="w-6 h-6" />
             </div>
-            <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 group-hover:translate-x-1 transition" />
+            <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:text-rose-400 group-hover:translate-x-1.5 transition-transform duration-200" />
           </div>
-          <h3 className="text-base font-bold text-white mb-1">Continue DSA Challenges</h3>
-          <p className="text-xs text-slate-400 leading-relaxed mb-4">
-            Practice greedy algorithms, hash maps, and interval merging with progressive Interview Cake hints and Scrimba video explainers.
+          <h3 className="text-lg font-bold text-white mb-2 tracking-tight">Algorithmic Problem Solving</h3>
+          <p className="text-xs text-neutral-400 leading-relaxed mb-6">
+            Execute real code against strict automated test assertions. Master sliding windows, mutex states, and LRU caches with kinetic typing sparks and 3D anti-spoiler hints.
           </p>
-          <span className="text-xs font-semibold text-indigo-400 flex items-center space-x-1">
-            <span>Open DSA Arena</span>
-            <span>&rarr;</span>
-          </span>
-        </div>
+          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+            <span className="text-xs font-semibold text-rose-400 flex items-center space-x-1">
+              <span>Open DSA Arena</span>
+              <span>&rarr;</span>
+            </span>
+            <span className="text-[10px] font-mono text-neutral-500">Live WASM / JS Sandbox</span>
+          </div>
+        </SpotlightCard>
 
-        {/* Card 2: Jump into Mobbin UI Design */}
-        <div 
+        {/* Track 2: Jump into UI Design Studio */}
+        <SpotlightCard 
+          spotlightColor="rgba(220, 38, 38, 0.25)" 
           onClick={() => setActiveTab('ui-design')}
-          className="glass-panel rounded-2xl p-6 border border-slate-800 hover:border-purple-500/40 cursor-pointer transition group"
+          className="p-7 cursor-pointer group hover:border-rose-500/40"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
-              <Layers className="w-5 h-5" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-600/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+              <Layers className="w-6 h-6" />
             </div>
-            <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition" />
+            <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:text-rose-400 group-hover:translate-x-1.5 transition-transform duration-200" />
           </div>
-          <h3 className="text-base font-bold text-white mb-1">Explore Mobbin UI System Design</h3>
-          <p className="text-xs text-slate-400 leading-relaxed mb-4">
-            Master real-world frontend architecture: Linear's command palette, Airbnb's filter drawer, and Spotify's audio queue.
+          <h3 className="text-lg font-bold text-white mb-2 tracking-tight">System & UI Design Studio</h3>
+          <p className="text-xs text-neutral-400 leading-relaxed mb-6">
+            Architect production frontends: Linear's command palette, Airbnb's filter drawer, and Spotify's audio queue. Inspect component hierarchies, state blueprints, and defensive edge cases.
           </p>
-          <span className="text-xs font-semibold text-purple-400 flex items-center space-x-1">
-            <span>Open UI Design Studio</span>
-            <span>&rarr;</span>
-          </span>
-        </div>
+          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+            <span className="text-xs font-semibold text-rose-400 flex items-center space-x-1">
+              <span>Open Design Studio</span>
+              <span>&rarr;</span>
+            </span>
+            <span className="text-[10px] font-mono text-neutral-500">Spatial Component Hierarchy</span>
+          </div>
+        </SpotlightCard>
 
       </div>
 
-      {/* Cloud & Hosting Footer Details */}
-      <div className="glass-panel rounded-2xl p-6 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
-        <div className="flex items-center space-x-3">
-          <Cloud className="w-4 h-4 text-blue-400" />
-          <span>Backend: <strong className="text-white">Cloud Firestore</strong> (Project: <code className="text-indigo-300">stackwa</code>)</span>
-        </div>
+      {/* System Integrity & Fast Actions Bar */}
+      <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.15)" className="p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-neutral-400">
+          <div className="flex items-center space-x-3">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Telemetry: <strong className="text-white">Active Session</strong> (Zero Mock Data • Verified Execution)</span>
+          </div>
 
-        <div className="flex items-center space-x-3">
-          <span>Deployment Platform: <strong className="text-white">DeployXA</strong> Cloud Containers</span>
-          <a 
-            href="https://github.com/glixzytechmain-create/stackwa" 
-            target="_blank" 
-            rel="noreferrer"
-            className="text-indigo-400 hover:text-indigo-300 flex items-center space-x-1"
-          >
-            <span>GitHub Repository</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
+          <div className="flex items-center space-x-4">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              onClick={() => setActiveTab('roadmap')}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/10 transition text-xs font-medium"
+            >
+              <Zap className="w-3.5 h-3.5 text-rose-400" />
+              <span>View Daywise Roadmap</span>
+            </motion.button>
+
+            <a 
+              href="https://github.com/glixzytechmain-create/stackwa" 
+              target="_blank" 
+              rel="noreferrer"
+              className="text-neutral-400 hover:text-white flex items-center space-x-1 font-mono text-[11px] transition"
+            >
+              <span>GitHub</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
         </div>
-      </div>
+      </SpotlightCard>
 
     </div>
   );

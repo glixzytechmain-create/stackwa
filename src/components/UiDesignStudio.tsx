@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   CheckCircle, 
   Sparkles, 
@@ -7,11 +7,14 @@ import {
   Terminal, 
   Search, 
   FolderTree, 
-  Radio
+  Radio,
+  Network
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { UI_CHALLENGES } from '../data/uiFlows';
 import { UiDesignChallenge, UiComponentItem } from '../types';
+import { SpotlightCard } from './SpotlightCard';
 
 interface UiDesignStudioProps {
   onCompleteFlow: (flowId: string) => void;
@@ -24,11 +27,41 @@ export const UiDesignStudio: React.FC<UiDesignStudioProps> = ({
 }) => {
   const [selectedChallenge, setSelectedChallenge] = useState<UiDesignChallenge>(UI_CHALLENGES[0]);
   const [hoveredNode, setHoveredNode] = useState<UiComponentItem | null>(null);
+  const [canvasViewMode, setCanvasViewMode] = useState<'spatial-nodes' | 'xray-mockup'>('spatial-nodes');
+  const [parallaxOffset, setParallaxOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [shockwaves, setShockwaves] = useState<Array<{ id: number; x: number; y: number }>>([]);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const [checkedEdgeCases, setCheckedEdgeCases] = useState<{ [key: string]: boolean }>({
     [`${UI_CHALLENGES[0].id}-0`]: true
   });
   const [selectedQuizAnswers, setSelectedQuizAnswers] = useState<{ [quizIndex: number]: number }>({});
   const [quizSubmitted, setQuizSubmitted] = useState<boolean>(false);
+
+  const triggerShockwave = (x: number, y: number) => {
+    const id = Date.now() + Math.random();
+    setShockwaves(prev => [...prev, { id, x, y }]);
+    setTimeout(() => {
+      setShockwaves(prev => prev.filter(s => s.id !== id));
+    }, 450);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const relX = (e.clientX - rect.left - rect.width / 2) * 0.12;
+    const relY = (e.clientY - rect.top - rect.height / 2) * 0.12;
+    setParallaxOffset({ x: relX, y: relY });
+  };
+
+  const handleNodeDragEnd = (e: MouseEvent | TouchEvent | PointerEvent) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const clientX = 'clientX' in e ? (e as MouseEvent).clientX : (e as TouchEvent).touches?.[0]?.clientX || (rect.left + rect.width / 2);
+    const clientY = 'clientY' in e ? (e as MouseEvent).clientY : (e as TouchEvent).touches?.[0]?.clientY || (rect.top + rect.height / 2);
+    const snapX = Math.max(30, Math.min(rect.width - 30, clientX - rect.left));
+    const snapY = Math.max(30, Math.min(rect.height - 30, clientY - rect.top));
+    triggerShockwave(snapX, snapY);
+  };
 
   const handleSelectChallenge = (challenge: UiDesignChallenge) => {
     setSelectedChallenge(challenge);
@@ -157,116 +190,253 @@ export const UiDesignStudio: React.FC<UiDesignStudioProps> = ({
             </div>
           </div>
 
-          {/* Interactive "Anatomy" Screen Mockup with X-Ray Box Overlay */}
-          <div className="oled-panel rounded-2xl p-6 border border-purple-500/20 bg-gradient-to-b from-purple-500/5 to-transparent space-y-3">
-            <div className="flex items-center justify-between">
+          {/* Interactive Spatial Canvas & Anatomy Mockup */}
+          <div className="oled-panel rounded-2xl p-6 border border-rose-500/20 bg-gradient-to-b from-rose-500/5 to-transparent space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center space-x-2">
-                <Eye className="w-4 h-4 text-purple-400" />
-                <h3 className="text-sm font-bold text-white">Split-Pane "Anatomy" Screen Canvas</h3>
+                <Network className="w-4 h-4 text-rose-400" />
+                <h3 className="text-sm font-bold text-white">Spatial Architecture Canvas</h3>
               </div>
-              <span className="text-[10px] text-purple-300 font-mono">
-                {hoveredNode ? `X-Ray: <${hoveredNode.name} />` : 'Hover component node on right to cast X-Ray'}
-              </span>
+
+              {/* Mode Switcher */}
+              <div className="flex items-center space-x-1 p-1 rounded-xl bg-black/60 border border-white/10 text-xs">
+                <button
+                  onClick={() => setCanvasViewMode('spatial-nodes')}
+                  className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition font-mono text-[11px] ${
+                    canvasViewMode === 'spatial-nodes'
+                      ? 'bg-rose-600 text-white font-bold shadow'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Network className="w-3 h-3" />
+                  <span>Spatial Nodes</span>
+                </button>
+                <button
+                  onClick={() => setCanvasViewMode('xray-mockup')}
+                  className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition font-mono text-[11px] ${
+                    canvasViewMode === 'xray-mockup'
+                      ? 'bg-rose-600 text-white font-bold shadow'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Eye className="w-3 h-3" />
+                  <span>UI X-Ray</span>
+                </button>
+              </div>
             </div>
 
-            {/* Screen Mockup Container with X-Ray Bounding Box */}
-            <div className="relative rounded-xl border border-white/10 bg-black p-6 flex flex-col items-center justify-center min-h-[290px] overflow-hidden shadow-2xl">
-              
-              {/* Dynamic X-Ray Overlay Bounding Box */}
-              {hoveredNode && (
-                <div 
-                  className="absolute z-20 pointer-events-none transition-all duration-300 border-2 border-dashed border-purple-400 bg-purple-500/20 shadow-lg shadow-purple-500/30 rounded-lg flex items-start justify-end p-1.5"
-                  style={{
-                    top: `${hoveredNode.xRayBox.top}%`,
-                    left: `${hoveredNode.xRayBox.left}%`,
-                    width: `${hoveredNode.xRayBox.width}%`,
-                    height: `${hoveredNode.xRayBox.height}%`
-                  }}
-                >
-                  <span className="text-[9px] font-mono font-bold bg-purple-900 text-purple-200 px-1.5 py-0.5 rounded shadow">
-                    &lt;{hoveredNode.name} /&gt;
+            {/* Canvas Viewport Container */}
+            {canvasViewMode === 'spatial-nodes' ? (
+              <div 
+                ref={canvasRef}
+                onMouseMove={handleCanvasMouseMove}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  triggerShockwave(e.clientX - rect.left, e.clientY - rect.top);
+                }}
+                className="relative rounded-xl border border-white/10 bg-black min-h-[320px] overflow-hidden shadow-2xl select-none dot-grid-pattern cursor-crosshair transition-all"
+                style={{
+                  backgroundPosition: `${parallaxOffset.x}px ${parallaxOffset.y}px`
+                }}
+              >
+                {/* Parallax Guidance Header Overlay */}
+                <div className="absolute top-3 inset-x-3 z-10 flex items-center justify-between pointer-events-none">
+                  <span className="text-[10px] font-mono text-neutral-400 bg-neutral-900/80 px-2 py-1 rounded border border-white/10 backdrop-blur-md">
+                    Parallax Grid Damped • Drag nodes to snap
                   </span>
-                </div>
-              )}
-
-              {/* Linear Simulation */}
-              {selectedChallenge.id === 'linear-command-palette' && (
-                <div className="relative z-10 w-full max-w-sm bg-neutral-900/90 backdrop-blur-md rounded-xl border border-white/15 shadow-2xl overflow-hidden">
-                  <div className="flex items-center px-3 py-2.5 border-b border-white/10 space-x-2">
-                    <Search className="w-4 h-4 text-neutral-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Type a command or search issues..." 
-                      className="bg-transparent text-xs text-white placeholder-neutral-500 focus:outline-none w-full"
-                      defaultValue="create issue"
-                    />
-                    <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">ESC</kbd>
-                  </div>
-                  <div className="p-2 space-y-1">
-                    <div className="text-[10px] uppercase font-bold text-neutral-500 px-2 py-1 font-mono">Actions</div>
-                    <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-purple-600/20 border border-purple-500/40 text-xs text-white">
-                      <div className="flex items-center space-x-2">
-                        <Terminal className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Create new issue</span>
-                      </div>
-                      <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-neutral-400 border border-white/10">C</kbd>
-                    </div>
-                    <div className="flex items-center justify-between px-2.5 py-2 rounded-lg text-xs text-neutral-400">
-                      <div className="flex items-center space-x-2">
-                        <Terminal className="w-3.5 h-3.5 text-neutral-600" />
-                        <span>Search shortcuts & docs</span>
-                      </div>
-                      <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-neutral-500 border border-white/10">?</kbd>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Airbnb Simulation */}
-              {selectedChallenge.id === 'airbnb-filter-drawer' && (
-                <div className="relative z-10 w-full max-w-sm bg-neutral-900 rounded-xl border border-white/15 shadow-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                    <h4 className="text-xs font-bold text-white">Filters</h4>
-                    <span className="text-[10px] text-neutral-400">Clear all</span>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-[11px] font-semibold text-neutral-300">Price range</div>
-                    <div className="h-10 bg-black/60 rounded-lg flex items-center justify-around px-2 text-[10px] text-neutral-400 border border-white/5">
-                      <span>$50 min</span>
-                      <div className="w-24 h-1 bg-purple-500 rounded-full" />
-                      <span>$450 max</span>
-                    </div>
-                  </div>
-                  <button className="w-full py-2 bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-lg text-xs font-semibold shadow-md">
-                    Show 340+ stays
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (canvasRef.current) {
+                        const rect = canvasRef.current.getBoundingClientRect();
+                        triggerShockwave(rect.width / 2, rect.height / 2);
+                      }
+                    }}
+                    className="pointer-events-auto text-[10px] font-mono px-2.5 py-1 rounded bg-rose-600/30 text-rose-300 border border-rose-500/40 hover:bg-rose-600/50 transition flex items-center space-x-1"
+                  >
+                    <span>Trigger Shockwave</span>
                   </button>
                 </div>
-              )}
 
-              {/* Spotify Simulation */}
-              {selectedChallenge.id === 'spotify-queue-drawer' && (
-                <div className="relative z-10 w-full max-w-sm bg-neutral-900 rounded-xl border border-white/15 shadow-2xl p-4 space-y-3">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-xs">
-                      ♫
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-xs font-bold text-white">Midnight City</div>
-                      <div className="text-[10px] text-neutral-400">M83 • Hurry Up, We're Dreaming</div>
-                    </div>
-                  </div>
-                  <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
-                    <div className="h-full w-2/3 bg-emerald-500" />
-                  </div>
-                  <div className="text-[10px] uppercase font-bold text-neutral-500 pt-1">Next in Queue</div>
-                  <div className="text-xs text-neutral-300 bg-black/40 p-2 rounded-lg flex items-center justify-between border border-white/5">
-                    <span>Starboy — The Weeknd</span>
-                    <span className="text-[10px] text-neutral-500">3:50</span>
-                  </div>
+                {/* Snapping Shockwave Ripple Elements */}
+                {shockwaves.map(s => (
+                  <div
+                    key={s.id}
+                    className="absolute rounded-full pointer-events-none shockwave-node border border-rose-500/80 shadow-[0_0_30px_rgba(220,38,38,0.7)]"
+                    style={{
+                      left: s.x,
+                      top: s.y,
+                      width: 90,
+                      height: 90
+                    }}
+                  />
+                ))}
+
+                {/* SVG Kinetic Connection Paths */}
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                  <line 
+                    x1="120" y1="80" 
+                    x2="260" y2="120" 
+                    stroke="rgba(220, 38, 38, 0.4)" 
+                    strokeWidth="1.5" 
+                    strokeDasharray="4 4"
+                  />
+                  <line 
+                    x1="120" y1="80" 
+                    x2="130" y2="200" 
+                    stroke="rgba(220, 38, 38, 0.4)" 
+                    strokeWidth="1.5" 
+                    strokeDasharray="4 4"
+                  />
+                  <line 
+                    x1="260" y1="120" 
+                    x2="280" y2="230" 
+                    stroke="rgba(220, 38, 38, 0.4)" 
+                    strokeWidth="1.5" 
+                    strokeDasharray="4 4"
+                  />
+                </svg>
+
+                {/* Draggable Component Nodes with Tight Spring Physics */}
+                {selectedChallenge.recommendedComponentTree.map((comp, idx) => {
+                  const defaultPositions = [
+                    { left: 35, top: 45 },
+                    { left: 230, top: 85 },
+                    { left: 45, top: 175 },
+                    { left: 235, top: 205 }
+                  ];
+                  const pos = defaultPositions[idx % defaultPositions.length];
+
+                  return (
+                    <motion.div
+                      key={comp.id}
+                      drag
+                      dragConstraints={canvasRef}
+                      dragElastic={0.15}
+                      onDragEnd={(e) => handleNodeDragEnd(e)}
+                      whileDrag={{ scale: 1.06, zIndex: 30, cursor: 'grabbing' }}
+                      whileHover={{ scale: 1.03 }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                      className="absolute z-20 cursor-grab px-3.5 py-2.5 rounded-xl bg-neutral-900/90 border border-white/15 hover:border-rose-500/60 shadow-xl shadow-black/80 backdrop-blur-md select-none group min-w-[140px]"
+                      style={{ left: pos.left, top: pos.top }}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 group-hover:animate-ping" />
+                        <span className="font-mono font-bold text-white text-xs">&lt;{comp.name} /&gt;</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400 mt-1 flex items-center justify-between gap-2">
+                        <span className="uppercase font-mono text-[9px] text-rose-400">{comp.type}</span>
+                        <span className="text-[9px] text-neutral-500 font-mono">Snap shock</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+
+                {/* Bottom Canvas Telemetry */}
+                <div className="absolute bottom-3 right-3 pointer-events-none z-10 text-[10px] font-mono text-neutral-500 bg-black/60 px-2 py-0.5 rounded border border-white/5">
+                  Parallax factor: 0.12 • Node Shockwave Ring Active
                 </div>
-              )}
+              </div>
+            ) : (
+              /* Live UI Mockup Container with X-Ray Bounding Box */
+              <div className="relative rounded-xl border border-white/10 bg-black p-6 flex flex-col items-center justify-center min-h-[320px] overflow-hidden shadow-2xl">
+                
+                {/* Dynamic X-Ray Overlay Bounding Box */}
+                {hoveredNode && (
+                  <div 
+                    className="absolute z-20 pointer-events-none transition-all duration-300 border-2 border-dashed border-rose-500 bg-rose-500/20 shadow-lg shadow-rose-500/30 rounded-lg flex items-start justify-end p-1.5"
+                    style={{
+                      top: `${hoveredNode.xRayBox.top}%`,
+                      left: `${hoveredNode.xRayBox.left}%`,
+                      width: `${hoveredNode.xRayBox.width}%`,
+                      height: `${hoveredNode.xRayBox.height}%`
+                    }}
+                  >
+                    <span className="text-[9px] font-mono font-bold bg-rose-900 text-rose-200 px-1.5 py-0.5 rounded shadow">
+                      &lt;{hoveredNode.name} /&gt;
+                    </span>
+                  </div>
+                )}
 
-            </div>
+                {/* Linear Simulation */}
+                {selectedChallenge.id === 'linear-command-palette' && (
+                  <div className="relative z-10 w-full max-w-sm bg-neutral-900/90 backdrop-blur-md rounded-xl border border-white/15 shadow-2xl overflow-hidden">
+                    <div className="flex items-center px-3 py-2.5 border-b border-white/10 space-x-2">
+                      <Search className="w-4 h-4 text-neutral-400" />
+                      <input 
+                        type="text" 
+                        placeholder="Type a command or search issues..." 
+                        className="bg-transparent text-xs text-white placeholder-neutral-500 focus:outline-none w-full"
+                        defaultValue="create issue"
+                      />
+                      <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">ESC</kbd>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      <div className="text-[10px] uppercase font-bold text-neutral-500 px-2 py-1 font-mono">Actions</div>
+                      <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-rose-600/20 border border-rose-500/40 text-xs text-white">
+                        <div className="flex items-center space-x-2">
+                          <Terminal className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Create new issue</span>
+                        </div>
+                        <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-neutral-400 border border-white/10">C</kbd>
+                      </div>
+                      <div className="flex items-center justify-between px-2.5 py-2 rounded-lg text-xs text-neutral-400">
+                        <div className="flex items-center space-x-2">
+                          <Terminal className="w-3.5 h-3.5 text-neutral-600" />
+                          <span>Search shortcuts & docs</span>
+                        </div>
+                        <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-neutral-500 border border-white/10">?</kbd>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Airbnb Simulation */}
+                {selectedChallenge.id === 'airbnb-filter-drawer' && (
+                  <div className="relative z-10 w-full max-w-sm bg-neutral-900 rounded-xl border border-white/15 shadow-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                      <h4 className="text-xs font-bold text-white">Filters</h4>
+                      <span className="text-[10px] text-neutral-400">Clear all</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-[11px] font-semibold text-neutral-300">Price range</div>
+                      <div className="h-10 bg-black/60 rounded-lg flex items-center justify-around px-2 text-[10px] text-neutral-400 border border-white/5">
+                        <span>$50 min</span>
+                        <div className="w-24 h-1 bg-rose-500 rounded-full" />
+                        <span>$450 max</span>
+                      </div>
+                    </div>
+                    <button className="w-full py-2 bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-lg text-xs font-semibold shadow-md">
+                      Show 340+ stays
+                    </button>
+                  </div>
+                )}
+
+                {/* Spotify Simulation */}
+                {selectedChallenge.id === 'spotify-queue-drawer' && (
+                  <div className="relative z-10 w-full max-w-sm bg-neutral-900 rounded-xl border border-white/15 shadow-2xl p-4 space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-lg bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold text-xs">
+                        ♫
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-xs font-bold text-white">Midnight City</div>
+                        <div className="text-[10px] text-neutral-400">M83 • Hurry Up, We're Dreaming</div>
+                      </div>
+                    </div>
+                    <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+                      <div className="h-full w-2/3 bg-rose-500" />
+                    </div>
+                    <div className="text-[10px] uppercase font-bold text-neutral-500 pt-1">Next in Queue</div>
+                    <div className="text-xs text-neutral-300 bg-black/40 p-2 rounded-lg flex items-center justify-between border border-white/5">
+                      <span>Starboy — The Weeknd</span>
+                      <span className="text-[10px] text-neutral-500">3:50</span>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
           </div>
 
           {/* The Edge-Case Radar (Defensive UI Engineering) */}
@@ -347,37 +517,42 @@ export const UiDesignStudio: React.FC<UiDesignStudioProps> = ({
               {selectedChallenge.recommendedComponentTree.map((comp) => {
                 const isHovered = hoveredNode?.id === comp.id;
                 return (
-                  <div 
+                  <SpotlightCard 
                     key={comp.id}
-                    onMouseEnter={() => setHoveredNode(comp)}
-                    onMouseLeave={() => setHoveredNode(null)}
-                    className={`p-3.5 rounded-xl border transition-all duration-200 space-y-1.5 cursor-pointer ${
+                    spotlightColor="rgba(220, 38, 38, 0.2)"
+                    className={`p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
                       isHovered 
-                        ? 'bg-purple-950/30 border-purple-500/50 shadow-lg shadow-purple-500/10' 
-                        : 'bg-black/60 border-white/5 hover:border-white/15'
+                        ? 'border-rose-500/60 shadow-lg shadow-rose-950/30' 
+                        : 'border-white/5 hover:border-white/15'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-purple-300 font-mono">
-                        &lt;{comp.name} /&gt;
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded uppercase font-semibold bg-white/5 text-neutral-400 font-mono">
-                        {comp.type}
-                      </span>
-                    </div>
-                    <p className="text-xs text-neutral-400">{comp.description}</p>
-                    
-                    {comp.stateUsed.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        <span className="text-[10px] text-neutral-500">State:</span>
-                        {comp.stateUsed.map(s => (
-                          <span key={s} className="text-[10px] px-1.5 py-0.2 rounded bg-purple-950/60 text-purple-300 font-mono">
-                            {s}
-                          </span>
-                        ))}
+                    <div 
+                      onMouseEnter={() => setHoveredNode(comp)}
+                      onMouseLeave={() => setHoveredNode(null)}
+                      className="space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-rose-300 font-mono">
+                          &lt;{comp.name} /&gt;
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded uppercase font-semibold bg-white/5 text-neutral-400 font-mono">
+                          {comp.type}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <p className="text-xs text-neutral-400">{comp.description}</p>
+                      
+                      {comp.stateUsed.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          <span className="text-[10px] text-neutral-500">State:</span>
+                          {comp.stateUsed.map(s => (
+                            <span key={s} className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950/60 text-rose-300 font-mono">
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </SpotlightCard>
                 );
               })}
             </div>
@@ -471,20 +646,26 @@ export const UiDesignStudio: React.FC<UiDesignStudioProps> = ({
               ))}
 
               <div className="pt-2 flex items-center justify-between">
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                   onClick={handleCheckQuiz}
                   className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition"
                 >
                   Verify Answers
-                </button>
+                </motion.button>
 
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                   onClick={handleCompleteChallenge}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/30 transition flex items-center space-x-1.5"
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition flex items-center space-x-1.5"
                 >
                   <CheckCircle className="w-3.5 h-3.5" />
                   <span>Mark Pattern Mastered</span>
-                </button>
+                </motion.button>
               </div>
             </div>
           </div>

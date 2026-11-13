@@ -25,6 +25,7 @@ import { InterviewTimer } from './InterviewTimer';
 import { RaiseHandModal } from './RaiseHandModal';
 import { executeCodeStrict, ExecutionOutcome } from '../services/codeExecutionService';
 import { voiceService } from '../services/voiceService';
+import { TypingSparksOverlay } from './TypingSparksOverlay';
 
 interface DsaArenaProps {
   onSolveProblem: (problemId: string) => void;
@@ -468,7 +469,9 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
             {/* FRONT FACE: Code Editor & Test Suite */}
             <div className={`oled-panel rounded-2xl border border-white/10 flex flex-col backface-hidden ${
               isFlipped ? 'pointer-events-none' : ''
-            } ${testRun.hasRun && testRun.outcome?.allPassed ? 'glow-emerald border-emerald-500/60' : ''}`}>
+            } ${testRun.hasRun && testRun.outcome?.allPassed ? 'glow-emerald border-emerald-500/60' : ''} ${
+              testRun.isRunning ? 'compiling-overdrive' : ''
+            }`}>
               
               {/* Editor Top Bar with Raise Hand & 3D Flip Trigger */}
               <div className="bg-neutral-900/90 px-5 py-3 border-b border-white/10 flex items-center justify-between text-xs">
@@ -534,16 +537,19 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                 </div>
               )}
 
-              {/* Text Area Code Editor with Focus Dimming support */}
+              {/* Text Area Code Editor with Focus Dimming and Kinetic Typing Sparks */}
               <div className={`relative min-h-[360px] bg-black p-4 transition-opacity duration-300 ${
                 isFocusDimmed ? 'opacity-20 pointer-events-none' : 'opacity-100'
               }`}>
+                {/* 1-Pixel Tactile Typing Sparks */}
+                <TypingSparksOverlay textareaRef={editorRef} />
+
                 <textarea
                   ref={editorRef}
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   onSelect={handleTextSelect}
-                  className="w-full h-full min-h-[340px] bg-transparent text-neutral-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-rose-600/40"
+                  className="w-full h-full min-h-[340px] bg-transparent text-neutral-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-rose-600/40 relative z-10"
                   spellCheck={false}
                 />
 
@@ -565,9 +571,11 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                 )}
               </div>
 
-              {/* Strict Real Test Suite Output */}
+              {/* Strict Real Test Suite Output with RGB Glitch Error Interventions */}
               {testRun.hasRun && testRun.outcome && (
-                <div className="p-4 border-t border-white/10 bg-neutral-950 text-xs font-mono space-y-3">
+                <div className={`p-4 border-t border-white/10 bg-neutral-950 text-xs font-mono space-y-3 ${
+                  !testRun.outcome.allPassed ? 'glitch-error' : ''
+                }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       {testRun.outcome.allPassed ? (
@@ -578,7 +586,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                       ) : (
                         <div className="flex items-center space-x-1.5 text-rose-400 font-bold">
                           <XCircle className="w-4 h-4" />
-                          <span>Test Failure Detected</span>
+                          <span>Test Failure Detected (Edge Case Missed)</span>
                         </div>
                       )}
                     </div>
@@ -621,30 +629,34 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                 </div>
               )}
 
-              {/* Action Buttons */}
+              {/* Action Buttons with 0.95 Click Physics */}
               <div className="bg-neutral-900/90 px-5 py-3.5 border-t border-white/10 flex items-center justify-between">
                 <div className="text-[11px] text-neutral-400 font-mono">
                   Target: <span className="text-neutral-200">{selectedProblem.timeComplexity}</span>
                 </div>
 
                 <div className="flex items-center space-x-3">
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                     onClick={handleRunCode}
                     disabled={testRun.isRunning}
                     className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-white transition border border-white/10 disabled:opacity-50"
                   >
                     <Play className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
                     <span>{testRun.isRunning ? 'Executing...' : 'Run Tests'}</span>
-                  </button>
+                  </motion.button>
 
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                     onClick={handleSubmitSolution}
                     disabled={testRun.isRunning}
                     className="flex items-center space-x-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition disabled:opacity-50"
                   >
                     <CheckCircle className="w-3.5 h-3.5" />
                     <span>Submit & Unlock</span>
-                  </button>
+                  </motion.button>
                 </div>
               </div>
 

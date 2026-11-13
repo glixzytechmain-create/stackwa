@@ -12,6 +12,7 @@ import { motion } from 'framer-motion';
 import { DsaProblem, InterviewClarifyingQuestion } from '../types';
 import { askClarifyingQuestion } from '../services/aiService';
 import { voiceService } from '../services/voiceService';
+import { DecryptedText } from './DecryptedText';
 
 interface RaiseHandModalProps {
   isOpen: boolean;
@@ -104,9 +105,10 @@ export const RaiseHandModal: React.FC<RaiseHandModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         className="relative w-full max-w-2xl oled-panel rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
       >
         {/* Subtle Ambient Glow */}
@@ -185,7 +187,7 @@ export const RaiseHandModal: React.FC<RaiseHandModalProps> = ({
                           <span>{isSpeakingAnswer ? 'Stop' : 'Listen'}</span>
                         </button>
                       </div>
-                      <p className="leading-relaxed">{item.answer}</p>
+                      <DecryptedText text={item.answer} speed={15} maxDurationMs={350} className="leading-relaxed block" />
                     </div>
                   </div>
                 </div>

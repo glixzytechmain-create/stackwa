@@ -13,6 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChatMessage, InterviewScorecard, UserInterviewProfile } from '../types';
 import { askAiCoach, generateAiScorecard } from '../services/aiService';
+import { DecryptedText } from './DecryptedText';
 
 interface FloatingAiPillProps {
   profile: UserInterviewProfile | null;
@@ -175,28 +176,53 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
 
   return (
     <>
-      {/* Floating Dynamic Command Pill (Bottom-Center) */}
+      {/* Floating Dynamic Command Pill (Bottom-Center) with Kinetic Thinking Aura */}
       <div className="fixed bottom-6 inset-x-0 z-40 flex justify-center pointer-events-none">
         <motion.button
           onClick={() => setIsOpen(true)}
           initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
+          animate={
+            isTyping
+              ? {
+                  y: 0,
+                  opacity: 1,
+                  scale: [1, 1.02, 1],
+                  boxShadow: [
+                    '0 0 15px rgba(220, 38, 38, 0.4)',
+                    '0 0 35px rgba(220, 38, 38, 0.7)',
+                    '0 0 15px rgba(220, 38, 38, 0.4)'
+                  ]
+                }
+              : { y: 0, opacity: 1, scale: 1, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }
+          }
+          transition={
+            isTyping
+              ? { duration: 1.8, repeat: Infinity, ease: 'easeInOut' }
+              : { type: 'spring', stiffness: 300, damping: 25 }
+          }
           whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.98 }}
-          className={`pointer-events-auto flex items-center space-x-3 px-5 py-2.5 rounded-full oled-surface border border-white/15 shadow-2xl transition-all duration-300 ${
+          whileTap={{ scale: 0.95 }}
+          className={`pointer-events-auto flex items-center space-x-3 px-5 py-2.5 rounded-full oled-surface border border-white/15 shadow-2xl transition-colors duration-300 ${
             isIdle ? 'ring-2 ring-rose-500/50 shadow-rose-500/20' : 'hover:border-white/30'
           }`}
         >
-          <div className="w-6 h-6 rounded-full bg-rose-600 flex items-center justify-center text-white">
+          <div className="w-6 h-6 rounded-full bg-rose-600 flex items-center justify-center text-white relative">
             <Bot className="w-3.5 h-3.5" />
+            {isTyping && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
+            )}
           </div>
 
           <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-200">
             <span>Socratic Coach</span>
-            <span className="text-[10px] text-neutral-500 font-mono flex items-center space-x-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
-              <Command className="w-2.5 h-2.5" />
-              <span>K</span>
-            </span>
+            {isTyping ? (
+              <span className="text-[10px] text-rose-400 font-mono animate-pulse">Evaluating...</span>
+            ) : (
+              <span className="text-[10px] text-neutral-500 font-mono flex items-center space-x-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10">
+                <Command className="w-2.5 h-2.5" />
+                <span>K</span>
+              </span>
+            )}
           </div>
 
           {scorecard && (
@@ -213,20 +239,23 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
         </motion.button>
       </div>
 
-      {/* Expanded Command Palette Modal */}
+      {/* Expanded Command Palette Modal with Liquid Route Transition */}
       <AnimatePresence>
         {isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 15 }}
+              initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               className="relative w-full max-w-2xl oled-surface rounded-3xl border border-white/15 shadow-2xl overflow-hidden flex flex-col h-[600px]"
             >
               {/* Header */}
               <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-neutral-900/40">
                 <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center text-white">
+                  <div className={`w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center text-white transition-shadow duration-300 ${
+                    isTyping ? 'shadow-[0_0_20px_rgba(220,38,38,0.7)] ring-2 ring-rose-400' : ''
+                  }`}>
                     <Bot className="w-4 h-4" />
                   </div>
                   <div>
@@ -278,7 +307,11 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
                           : 'bg-neutral-900/80 border border-white/10 text-neutral-200'
                       }`}
                     >
-                      <p className="whitespace-pre-line">{m.text}</p>
+                      {m.sender === 'ai' ? (
+                        <DecryptedText text={m.text} speed={15} maxDurationMs={350} className="whitespace-pre-line" />
+                      ) : (
+                        <p className="whitespace-pre-line">{m.text}</p>
+                      )}
                       <span className={`block text-[10px] mt-2 ${m.sender === 'user' ? 'text-rose-200' : 'text-neutral-500'}`}>
                         {m.timestamp}
                       </span>
@@ -310,13 +343,14 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
                     placeholder="Ask about time complexity, edge cases, or paste a code snippet..."
                     className="flex-1 bg-neutral-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-rose-500 transition"
                   />
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
                     type="submit"
                     disabled={!input.trim()}
                     className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white rounded-xl shadow-md transition"
                   >
                     <Send className="w-4 h-4" />
-                  </button>
+                  </motion.button>
                 </form>
               </div>
 
@@ -330,9 +364,10 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
         {showReceipt && scorecard && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               className="relative w-full max-w-sm bg-neutral-900 text-white rounded-2xl p-6 border border-white/20 shadow-2xl font-mono text-xs space-y-4"
             >
               {/* Receipt Cutout Edge Styling */}
@@ -388,9 +423,9 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
                 </div>
               </div>
 
-              {/* Summary */}
+              {/* Summary with DecryptedText Reveal */}
               <div className="text-[10px] text-neutral-300 leading-relaxed italic">
-                "{scorecard.summary}"
+                "<DecryptedText text={scorecard.summary} speed={15} maxDurationMs={450} />"
               </div>
 
               {/* Mock Barcode */}
@@ -401,22 +436,28 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
                 <span className="text-[9px] text-neutral-500 mt-1 block">VERIFIED BY STACKWA SOCRATIC AI</span>
               </div>
 
-              {/* Receipt Actions */}
+              {/* Receipt Actions with 0.95 scale physics */}
               <div className="pt-2 flex items-center space-x-2">
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                   onClick={copyReceiptText}
                   className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-sans text-xs font-semibold transition flex items-center justify-center space-x-1.5"
                 >
                   {copiedReceipt ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedReceipt ? 'Copied!' : 'Copy Receipt'}</span>
-                </button>
-                <button
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                   onClick={() => alert("Receipt exported! Ready to share on Twitter/LinkedIn or portfolio.")}
                   className="py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-sans text-xs font-semibold transition"
                   title="Download as PNG"
                 >
                   <Download className="w-3.5 h-3.5" />
-                </button>
+                </motion.button>
               </div>
 
             </motion.div>

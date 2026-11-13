@@ -13,6 +13,7 @@ import { motion } from 'framer-motion';
 import { UserInterviewProfile, DayPlan, DsaProblem, OnboardingMessage } from '../types';
 import { conductOnboardingTurn, generateDynamicChallenge } from '../services/aiService';
 import { voiceService } from '../services/voiceService';
+import { DecryptedText } from './DecryptedText';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -194,9 +195,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-lg">
       <motion.div
-        initial={{ opacity: 0, scale: 0.94, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.94 }}
+        initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         className="relative w-full max-w-2xl oled-panel rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl flex flex-col h-[650px] overflow-hidden"
       >
         {/* Subtle Ambient Background Sweep */}
@@ -266,7 +268,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   </span>
                   <span>{msg.timestamp}</span>
                 </div>
-                <p className="whitespace-pre-line">{msg.text}</p>
+                {msg.sender === 'interviewer' ? (
+                  <DecryptedText text={msg.text} speed={15} maxDurationMs={350} className="whitespace-pre-line block" />
+                ) : (
+                  <p className="whitespace-pre-line">{msg.text}</p>
+                )}
               </div>
             </div>
           ))}

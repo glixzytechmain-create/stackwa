@@ -202,16 +202,32 @@ export const App: React.FC = () => {
       {/* Tactile Screen Tap Ripple Effect */}
       <ClickRippleEffect />
 
-      {/* View 1: Cinematic Motion Landing Page */}
-      {currentView === 'landing' ? (
-        <LandingPage
-          onLaunchApp={() => setCurrentView('studio')}
-          onSignInWithGoogle={() => loginWithGoogle()}
-          user={user}
-        />
-      ) : (
-        /* View 2: Studio Workspace */
-        <div className="relative z-10 flex flex-col min-h-screen">
+      {/* Liquid View Switcher: Landing vs Studio */}
+      <AnimatePresence mode="wait">
+        {currentView === 'landing' ? (
+          <motion.div
+            key="landing-view"
+            initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            className="w-full"
+          >
+            <LandingPage
+              onLaunchApp={() => setCurrentView('studio')}
+              onSignInWithGoogle={() => loginWithGoogle()}
+              user={user}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="studio-view"
+            initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            className="relative z-10 flex flex-col min-h-screen"
+          >
           
           {/* Top Clean Navbar */}
           <Navbar 
@@ -230,10 +246,10 @@ export const App: React.FC = () => {
               {activeTab === 'dsa' && (
                 <motion.div
                   key="dsa"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
                   <DsaArena 
                     onSolveProblem={handleSolveProblem} 
@@ -248,10 +264,10 @@ export const App: React.FC = () => {
               {activeTab === 'ui-design' && (
                 <motion.div
                   key="ui-design"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
                   <UiDesignStudio 
                     onCompleteFlow={handleCompleteFlow} 
@@ -263,10 +279,10 @@ export const App: React.FC = () => {
               {activeTab === 'roadmap' && (
                 <motion.div
                   key="roadmap"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
                   <RoadmapView
                     profile={profile}
@@ -281,10 +297,10 @@ export const App: React.FC = () => {
               {activeTab === 'mock-interview' && (
                 <motion.div
                   key="mock-interview"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
                   <AiMockRoom 
                     solvedCount={solvedProblemIds.length} 
@@ -296,10 +312,10 @@ export const App: React.FC = () => {
               {activeTab === 'dashboard' && (
                 <motion.div
                   key="dashboard"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
                   <ProgressDashboard 
                     solvedCount={solvedProblemIds.length} 
@@ -343,8 +359,9 @@ export const App: React.FC = () => {
               </div>
             </div>
           </footer>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
     </div>
   );
