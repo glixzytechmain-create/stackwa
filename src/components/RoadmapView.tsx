@@ -133,11 +133,11 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('ui-design')}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border border-purple-500/30 transition flex items-center space-x-1.5"
+                  onClick={() => setActiveTab('dsa')}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 border border-rose-500/30 transition flex items-center space-x-1.5"
                 >
                   <Layers className="w-3.5 h-3.5" />
-                  <span>Mobbin X-Ray</span>
+                  <span>Interactive Screen</span>
                 </button>
 
                 <a

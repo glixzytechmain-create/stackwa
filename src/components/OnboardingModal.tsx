@@ -32,9 +32,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     {
       id: 'init',
       sender: 'interviewer',
-      text: initialProfile?.targetCompany 
-        ? `Welcome back! We are currently calibrated for ${initialProfile.targetCompany} (${initialProfile.role}). Would you like to recalibrate for a new company, role, or specific upcoming interview date?`
-        : "Welcome to Stackwa. I'm your Technical Interview Lead. Let's calibrate your high-stakes preparation: What company and engineering role are you interviewing for, when is your interview scheduled, and what rounds or topics feel most intimidating right now?",
+      text: initialProfile?.targetCompany && initialProfile.targetCompany !== 'Stripe' && initialProfile.onboardingCompleted
+        ? `Welcome back! We are currently calibrated for ${initialProfile.targetCompany} (${initialProfile.role}). Would you like to recalibrate for a new company or switch to General Practice?`
+        : "Welcome to Stackwa. I'm your Socratic Technical Lead. To tailor your session: Are you preparing for an upcoming technical interview (tell me your target company, role, or date)? Or are you visiting to explore and sharpen your general algorithmic & system design skills?",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);

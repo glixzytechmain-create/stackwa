@@ -27,11 +27,15 @@ Conversation history:
 ${history.map(h => `${h.sender === 'interviewer' ? 'Interviewer' : 'Candidate'}: ${h.text}`).join('\n')}
 Candidate: ${candidateMessage}
 
-Respond as the Interviewer. If you already have enough information (company, role, timeline, and focus areas), summarize what you learned and conclude the onboarding so we can generate their personalized battle plan.
+Respond as the Interviewer. 
+IMPORTANT: Recognize that NOT everyone has an upcoming interview scheduled. Some users are visitors, students, or engineers who are simply visiting or exploring to practice general problem-solving.
+- If the user says they are just visiting, exploring, or don't have an interview scheduled: acknowledge that warmly, set isComplete=true, set targetCompany="General Practice", role="Fullstack Engineer", daysRemaining=30, and focusAreas=["Algorithmic Invariants", "System Architecture", "Defensive Edge Cases"].
+- If the user specifies an interview target, summarize what you learned and conclude the onboarding with isComplete=true.
+
 Return ONLY valid JSON matching this schema:
 {
   "replyText": string,
-  "isComplete": boolean (true ONLY if you have identified target company, role, timeline/days, and key focus area),
+  "isComplete": boolean (true if you have identified target company/role/timeline OR if the user is a visitor/general learner),
   "extractedProfile": {
     "targetCompany": string,
     "role": string,

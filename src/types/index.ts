@@ -122,6 +122,7 @@ export interface UserInterviewProfile {
   focusAreas: string[];
   calendarConnected: boolean;
   onboardingCompleted: boolean;
+  isGeneralPractice?: boolean;
 }
 
 export interface DayPlan {

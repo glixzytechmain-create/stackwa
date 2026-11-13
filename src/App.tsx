@@ -5,12 +5,14 @@ import { LandingPage } from './components/LandingPage';
 import { SpatialCanvas } from './components/SpatialCanvas';
 import { ClickRippleEffect } from './components/ClickRippleEffect';
 import { DsaArena } from './components/DsaArena';
-import { UiDesignStudio } from './components/UiDesignStudio';
 import { AiMockRoom } from './components/AiMockRoom';
 import { ProgressDashboard } from './components/ProgressDashboard';
 import { RoadmapView } from './components/RoadmapView';
 import { OnboardingModal } from './components/OnboardingModal';
 import { FloatingAiPill } from './components/FloatingAiPill';
+import { InterviewCard, InterviewTrack } from './components/InterviewCard';
+import { InterviewEnvironment } from './components/InterviewEnvironment';
+import { Building2, Sparkles, Code2 } from 'lucide-react';
 import { TabType, UserInterviewProfile, DayPlan, DsaProblem } from './types';
 import { DSA_PROBLEMS } from './data/dsaProblems';
 import { UI_CHALLENGES } from './data/uiFlows';
@@ -22,15 +24,16 @@ import {
 } from './firebase';
 import { type User } from 'firebase/auth';
 
-const DEFAULT_PROFILE: UserInterviewProfile = {
-  targetCompany: 'Stripe',
-  role: 'Frontend / Systems Engineer',
+const DEFAULT_VISITOR_PROFILE: UserInterviewProfile = {
+  targetCompany: 'General Engineering Practice',
+  role: 'Full-Stack / Systems Engineer',
   seniority: 'Mid-Level',
-  interviewDate: '2026-11-25',
-  daysRemaining: 11,
-  focusAreas: ['Sliding Window & Rate Limiting', 'Transactional State Machines', 'Defensive Edge Cases'],
-  calendarConnected: true,
-  onboardingCompleted: true
+  interviewDate: '',
+  daysRemaining: 0,
+  focusAreas: ['Distributed Rate Limiting', 'Transactional State Machines', 'LRU O(1) Eviction Pipeline'],
+  calendarConnected: false,
+  onboardingCompleted: false,
+  isGeneralPractice: true
 };
 
 const DEFAULT_ROADMAP: DayPlan[] = [
@@ -108,7 +111,8 @@ export const App: React.FC = () => {
   const [streakDays, setStreakDays] = useState<number>(3);
 
   // Personalized Interview Profile & Daywise Roadmap
-  const [profile, setProfile] = useState<UserInterviewProfile>(DEFAULT_PROFILE);
+  const [profile, setProfile] = useState<UserInterviewProfile>(DEFAULT_VISITOR_PROFILE);
+  const [activeTrack, setActiveTrack] = useState<InterviewTrack | null>(null);
   const [roadmap, setRoadmap] = useState<DayPlan[]>(DEFAULT_ROADMAP);
   const [customProblems, setCustomProblems] = useState<DsaProblem[]>([]);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
@@ -135,8 +139,19 @@ export const App: React.FC = () => {
     const savedProfile = localStorage.getItem('stackwa_interview_profile');
     if (savedProfile) {
       try {
-        setProfile(JSON.parse(savedProfile));
-      } catch {}
+        const parsed = JSON.parse(savedProfile);
+        // Purge legacy hardcoded "Stripe in 11 days" mock data if user didn't intentionally set it
+        if (parsed.targetCompany === 'Stripe' && parsed.daysRemaining === 11 && !parsed.userSet) {
+          localStorage.removeItem('stackwa_interview_profile');
+          setProfile(DEFAULT_VISITOR_PROFILE);
+        } else {
+          setProfile(parsed);
+        }
+      } catch {
+        setProfile(DEFAULT_VISITOR_PROFILE);
+      }
+    } else {
+      setProfile(DEFAULT_VISITOR_PROFILE);
     }
 
     const savedRoadmap = localStorage.getItem('stackwa_daywise_roadmap');
@@ -159,30 +174,22 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleCompleteFlow = (flowId: string) => {
-    if (!completedFlowIds.includes(flowId)) {
-      const updated = [...completedFlowIds, flowId];
-      setCompletedFlowIds(updated);
-      if (user && !user.isAnonymous) {
-        saveUserProgress(user.uid, { completedUiFlows: updated });
-      }
-    }
-  };
-
   const handleOnboardingComplete = (
     newProfile: UserInterviewProfile, 
     newRoadmap: DayPlan[], 
     customChallenge?: DsaProblem
   ) => {
-    setProfile(newProfile);
+    const profileToSave = { ...newProfile, userSet: true };
+    setProfile(profileToSave);
     setRoadmap(newRoadmap);
     if (customChallenge) {
       setCustomProblems(prev => [customChallenge, ...prev.filter(p => p.id !== customChallenge.id)]);
     }
-    localStorage.setItem('stackwa_interview_profile', JSON.stringify(newProfile));
+    localStorage.setItem('stackwa_interview_profile', JSON.stringify(profileToSave));
     localStorage.setItem('stackwa_daywise_roadmap', JSON.stringify(newRoadmap));
     setCurrentView('studio');
-    setActiveTab('roadmap');
+    setActiveTab('dsa');
+    setActiveTrack(null);
   };
 
   const handleToggleDay = (dayNumber: number) => {
@@ -251,28 +258,138 @@ export const App: React.FC = () => {
                   exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
                   transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
-                  <DsaArena 
-                    onSolveProblem={handleSolveProblem} 
-                    solvedProblemIds={solvedProblemIds}
-                    onTriggerAiPrompt={(prompt) => setExternalAiPrompt(prompt)}
-                    customProblems={customProblems}
-                    onOpenCalibration={() => setIsOnboardingOpen(true)}
-                  />
-                </motion.div>
-              )}
+                  {activeTrack ? (
+                    <InterviewEnvironment 
+                      track={activeTrack}
+                      onExit={() => setActiveTrack(null)}
+                      customProblems={customProblems}
+                    />
+                  ) : (
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+                      {/* Recommendation Top Banner */}
+                      <div className="relative rounded-3xl p-6 md:p-8 bg-gradient-to-r from-neutral-900/90 via-rose-950/20 to-neutral-900/90 border border-white/10 overflow-hidden shadow-2xl backdrop-blur-xl">
+                        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                          <div className="space-y-2">
+                            <div className="flex items-center space-x-2">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                {profile?.isGeneralPractice ? 'RECOMMENDED FOCUS' : `${profile?.targetCompany || 'TARGET'} ROADMAP`}
+                              </span>
+                              {profile?.daysRemaining ? (
+                                <span className="text-xs text-neutral-400 font-mono">
+                                  {profile.daysRemaining}d to Rehearsal
+                                </span>
+                              ) : null}
+                            </div>
+                            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                              What will you hone today?
+                            </h2>
+                            <p className="text-neutral-400 text-sm max-w-2xl">
+                              {profile?.isGeneralPractice 
+                                ? 'Production-grade engineering tracks with interactive UI sandboxes, Architecture MCQs, and real Scrimba codecasts.'
+                                : `AI curated drill focusing on ${profile?.focusAreas?.[0] || 'Core Algorithmic Invariants'} to prepare for ${profile?.targetCompany || 'your next interview'}.`}
+                            </p>
+                          </div>
 
-              {activeTab === 'ui-design' && (
-                <motion.div
-                  key="ui-design"
-                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
-                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                >
-                  <UiDesignStudio 
-                    onCompleteFlow={handleCompleteFlow} 
-                    completedFlowIds={completedFlowIds} 
-                  />
+                          <div className="flex items-center space-x-3">
+                            <button
+                              onClick={() => setIsOnboardingOpen(true)}
+                              className="flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-xs transition"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+                              <span>{profile?.isGeneralPractice ? 'Calibrate Target Company' : 'Recalibrate Track'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Active Tracks (3D Flippable Cards) */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2.5">
+                            <Building2 className="w-4 h-4 text-rose-500" />
+                            <h3 className="text-base font-bold text-white tracking-tight">Interview Tracks</h3>
+                          </div>
+                          <span className="text-xs text-neutral-400 font-mono">3D Flippable Cards • Select to Enter Scoped Screen</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {/* 1. Tailored Target Track Card if not visitor mode */}
+                          {!profile?.isGeneralPractice && profile?.targetCompany && (
+                            <InterviewCard 
+                              track={{
+                                id: 'calibrated-target',
+                                company: profile.targetCompany,
+                                role: profile.role || 'Full-Stack / Systems Engineer',
+                                dateLabel: profile.interviewDate ? new Date(profile.interviewDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Next Round',
+                                daysRemaining: profile.daysRemaining,
+                                intensity: '45m',
+                                difficulty: 'FAANG-Caliber',
+                                focusTopics: profile.focusAreas && profile.focusAreas.length > 0 ? profile.focusAreas : ['Sliding Window', 'State Machines', 'Edge Cases'],
+                                roundsCount: 3,
+                                completedRounds: 0,
+                                readinessScore: 82,
+                                accentColor: 'rose'
+                              }}
+                              onEnter={(t) => setActiveTrack(t)}
+                            />
+                          )}
+
+                          {/* 2. General Engineering Practice Vault Card */}
+                          <InterviewCard 
+                            track={{
+                              id: 'general-vault',
+                              company: 'General Engineering Practice',
+                              role: 'Algorithms & Spatial Systems',
+                              dateLabel: 'Daily Practice',
+                              intensity: '30m',
+                              difficulty: 'Hard',
+                              focusTopics: ['Sliding Window Limiter', 'Idempotent Ledger', 'LRU O(1) Eviction'],
+                              roundsCount: 3,
+                              completedRounds: 1,
+                              readinessScore: 78,
+                              accentColor: 'rose'
+                            }}
+                            onEnter={(t) => setActiveTrack(t)}
+                          />
+
+                          {/* 3. New Target Calibration Action Card */}
+                          <div 
+                            onClick={() => setIsOnboardingOpen(true)}
+                            className="h-[340px] rounded-3xl p-6 bg-neutral-950/60 border border-dashed border-white/15 hover:border-rose-500/50 flex flex-col items-center justify-center text-center cursor-pointer group transition duration-300"
+                          >
+                            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4 group-hover:scale-110 transition duration-300">
+                              <Sparkles className="w-6 h-6" />
+                            </div>
+                            <h4 className="font-bold text-white text-base">Calibrate Target Screen</h4>
+                            <p className="text-xs text-neutral-400 mt-2 max-w-xs">
+                              Have an upcoming interview? Talk with our Socratic AI Lead to build an adaptive track tailored to your dream company.
+                            </p>
+                            <span className="mt-4 px-3 py-1.5 rounded-xl bg-white/5 group-hover:bg-rose-600 group-hover:text-white text-xs font-semibold text-neutral-300 transition">
+                              Launch AI Lead Chat →
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Individual Vaults Explorer (DsaArena) */}
+                      <div className="pt-6 border-t border-white/5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Code2 className="w-4 h-4 text-rose-500" />
+                            <h3 className="text-base font-bold text-white tracking-tight">Independent Problem Vaults</h3>
+                          </div>
+                          <span className="text-xs text-neutral-400 font-mono">Single-Problem Workspace with Holo-Deck</span>
+                        </div>
+                        <DsaArena 
+                          onSolveProblem={handleSolveProblem} 
+                          solvedProblemIds={solvedProblemIds}
+                          onTriggerAiPrompt={(prompt) => setExternalAiPrompt(prompt)}
+                          customProblems={customProblems}
+                          onOpenCalibration={() => setIsOnboardingOpen(true)}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 

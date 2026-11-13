@@ -159,10 +159,10 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
           </div>
         </SpotlightCard>
 
-        {/* Track 2: Jump into UI Design Studio */}
+        {/* Track 2: Jump into Interactive Interview Tracks */}
         <SpotlightCard 
           spotlightColor="rgba(220, 38, 38, 0.25)" 
-          onClick={() => setActiveTab('ui-design')}
+          onClick={() => setActiveTab('dsa')}
           className="p-7 cursor-pointer group hover:border-rose-500/40"
         >
           <div className="flex items-center justify-between mb-4">
@@ -171,16 +171,16 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
             </div>
             <ArrowRight className="w-4 h-4 text-neutral-500 group-hover:text-rose-400 group-hover:translate-x-1.5 transition-transform duration-200" />
           </div>
-          <h3 className="text-lg font-bold text-white mb-2 tracking-tight">System & UI Design Studio</h3>
+          <h3 className="text-lg font-bold text-white mb-2 tracking-tight">Interactive Interview Tracks</h3>
           <p className="text-xs text-neutral-400 leading-relaxed mb-6">
-            Architect production frontends: Linear's command palette, Airbnb's filter drawer, and Spotify's audio queue. Inspect component hierarchies, state blueprints, and defensive edge cases.
+            3D flippable cards with calibrated company screens, interactive UI sandboxes, Architecture MCQs, and mid-question Socratic agent steering.
           </p>
           <div className="flex items-center justify-between pt-2 border-t border-white/5">
             <span className="text-xs font-semibold text-rose-400 flex items-center space-x-1">
-              <span>Open Design Studio</span>
+              <span>Enter Interview Screen</span>
               <span>&rarr;</span>
             </span>
-            <span className="text-[10px] font-mono text-neutral-500">Spatial Component Hierarchy</span>
+            <span className="text-[10px] font-mono text-neutral-500">Live UI Sandbox & Scrimba</span>
           </div>
         </SpotlightCard>
 
