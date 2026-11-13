@@ -1,3 +1,5 @@
+import { ProblemTestCase } from '../services/codeExecutionService';
+
 export type TabType = 'dsa' | 'ui-design' | 'mock-interview' | 'dashboard' | 'roadmap';
 
 export interface ProgressiveHint {
@@ -16,6 +18,8 @@ export interface DsaProblem {
   category: string;
   companyTags: string[];
   description: string;
+  functionName: string; // Target function name to execute
+  testCases: ProblemTestCase[];
   examples: {
     input: string;
     output: string;
@@ -129,3 +133,18 @@ export interface DayPlan {
   dailyRitual: string;
   isCompleted: boolean;
 }
+
+export interface OnboardingMessage {
+  id: string;
+  sender: 'interviewer' | 'candidate';
+  text: string;
+  timestamp: string;
+}
+
+export interface InterviewClarifyingQuestion {
+  id: string;
+  question: string;
+  answer: string;
+  timestamp: string;
+}
+

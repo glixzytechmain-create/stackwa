@@ -2,339 +2,369 @@ import { DsaProblem } from '../types';
 
 export const DSA_PROBLEMS: DsaProblem[] = [
   {
-    id: 'stock-price-maximizer',
-    title: 'Apple Stocks — Best Time to Buy and Sell',
-    difficulty: 'Easy',
-    category: 'Greedy Algorithms / Arrays',
-    companyTags: ['Apple', 'Google', 'Meta'],
-    description: `Suppose we could access yesterday's stock prices as an array, where the indices are the time (in minutes) past trade opening time, which was 9:30am and the values are the price (in US dollars) of one share of Apple stock.
+    id: 'distributed-rate-limiter',
+    title: 'Real-Time Sliding Window Request Arbiter',
+    difficulty: 'Medium',
+    category: 'Sliding Window & Hash Maps',
+    companyTags: ['Stripe', 'Cloudflare', 'AWS'],
+    description: `You are architecting an edge API gateway rate limiter. Given a chronologically ordered array of request timestamps in milliseconds and a rate limit rule (maximum 'k' requests within any 'windowMs' time window), determine whether all requests conform to the limit without triggering rate limit drops.
 
-Write an efficient function that takes an array of stock prices and returns the best profit I could have made from one purchase and one sale of one share of Apple stock yesterday.
-
-Note: You must buy before you sell. You may not buy and sell in the same time step (at least 1 minute must pass).`,
+Return true if all requests are allowed, or false if any burst violates the window limit.`,
+    functionName: 'isRateLimitConformant',
+    constraints: [
+      'Timestamps are strictly non-decreasing positive integers: 1 <= timestamps.length <= 10^5',
+      '1 <= k <= 1000',
+      '1 <= windowMs <= 10^6',
+      'Target Time Complexity: O(n) single pass.',
+      'Target Space Complexity: O(1) auxiliary space.'
+    ],
     examples: [
       {
-        input: 'stockPrices = [10, 7, 5, 8, 11, 9]',
-        output: '6',
-        explanation: 'Buy for $5 and sell for $11 gives a profit of $6 (11 - 5 = 6).'
+        input: 'timestamps = [1000, 1200, 1500, 2100], k = 3, windowMs = 1000',
+        output: 'true',
+        explanation: 'At any point, within 1000ms there are at most 3 requests.'
       },
       {
-        input: 'stockPrices = [10, 8, 6, 4, 2]',
-        output: '-2',
-        explanation: 'If the price keeps falling, the best profit is a loss of -$2 (buy at $4, sell at $2 or buy at $8, sell at $6).'
+        input: 'timestamps = [1000, 1100, 1200, 1300], k = 3, windowMs = 1000',
+        output: 'false',
+        explanation: '4 requests arrive between 1000ms and 1300ms, exceeding k=3.'
       }
     ],
-    constraints: [
-      'The array stockPrices contains at least 2 prices.',
-      'Prices can be all decreasing (negative profit allowed).',
-      'Time complexity target: O(n).',
-      'Space complexity target: O(1).'
+    testCases: [
+      {
+        title: 'Test 1: Steady traffic conformant',
+        input: [[1000, 1200, 1500, 2100], 3, 1000],
+        expected: true,
+        inputStr: '[1000, 1200, 1500, 2100], k=3, window=1000'
+      },
+      {
+        title: 'Test 2: Burst window violation',
+        input: [[1000, 1100, 1200, 1300], 3, 1000],
+        expected: false,
+        inputStr: '[1000, 1100, 1200, 1300], k=3, window=1000'
+      },
+      {
+        title: 'Test 3: Exact boundary window',
+        input: [[1000, 2000, 3000], 1, 1000],
+        expected: true,
+        inputStr: '[1000, 2000, 3000], k=1, window=1000'
+      }
     ],
     starterCode: {
-      javascript: `function getMaxProfit(stockPrices) {
-  // Calculate the max profit
+      javascript: `function isRateLimitConformant(timestamps, k, windowMs) {
+  // Implement two-pointer sliding window rate check
   
-  return 0;
+  return true;
 }`,
-      python: `def get_max_profit(stock_prices):
-    # Calculate the max profit
-    pass`
+      python: `def is_rate_limit_conformant(timestamps, k, window_ms):
+    # Implement two-pointer sliding window rate check
+    return True`
     },
     solutionCode: {
-      javascript: `function getMaxProfit(stockPrices) {
-  if (stockPrices.length < 2) {
-    throw new Error('Getting a profit requires at least 2 prices');
+      javascript: `function isRateLimitConformant(timestamps, k, windowMs) {
+  let left = 0;
+  for (let right = 0; right < timestamps.length; right++) {
+    while (timestamps[right] - timestamps[left] >= windowMs) {
+      left++;
+    }
+    const currentWindowCount = right - left + 1;
+    if (currentWindowCount > k) return false;
   }
-
-  // We'll greedily update minPrice and maxProfit
-  let minPrice = stockPrices[0];
-  let maxProfit = stockPrices[1] - stockPrices[0];
-
-  for (let i = 1; i < stockPrices.length; i++) {
-    const currentPrice = stockPrices[i];
-    const potentialProfit = currentPrice - minPrice;
-
-    // Update maxProfit if we can do better
-    maxProfit = Math.max(maxProfit, potentialProfit);
-
-    // Update minPrice so it's always the lowest seen so far
-    minPrice = Math.min(minPrice, currentPrice);
-  }
-
-  return maxProfit;
+  return true;
 }`,
-      python: `def get_max_profit(stock_prices):
-    if len(stock_prices) < 2:
-        raise ValueError('Getting a profit requires at least 2 prices')
-
-    min_price = stock_prices[0]
-    max_profit = stock_prices[1] - stock_prices[0]
-
-    for current_price in stock_prices[1:]:
-        potential_profit = current_price - min_price
-        max_profit = max(max_profit, potential_profit)
-        min_price = min(min_price, current_price)
-
-    return max_profit`
+      python: `def is_rate_limit_conformant(timestamps, k, window_ms):
+    left = 0
+    for right in range(len(timestamps)):
+        while timestamps[right] - timestamps[left] >= window_ms:
+            left += 1
+        if (right - left + 1) > k:
+            return False
+    return True`
     },
     timeComplexity: 'O(n) time',
-    spaceComplexity: 'O(1) additional space',
+    spaceComplexity: 'O(1) space',
     interviewCakePedagogy: {
-      conceptBreakdown: `The brute force approach compares every pair of buy and sell times, taking O(n²) time.
-Instead of checking every pair, we can use a Greedy Approach: loop through the list once, while tracking the lowest price seen so far and the highest profit possible so far.`,
+      conceptBreakdown: 'Avoid nested O(n²) scans by taking advantage of monotonic ordering with a two-pointer sliding window.',
       commonPitfalls: [
-        'Initializing maxProfit to 0 instead of prices[1] - prices[0] (fails when prices only drop).',
-        'Buying and selling on the exact same minute (must be at least 1 minute apart).',
-        'Calculating maxProfit before updating minPrice (or vice-versa, causing you to sell before buying).'
+        'Allocating sub-arrays or queues which incurs O(k) memory allocations',
+        'Off-by-one errors on boundary conditions (>= windowMs vs > windowMs)'
       ]
     },
-    scrimbaEmbedId: 'c2L4Nku2',
     hints: [
       {
         id: 1,
         tier: 'Clarifying Questions',
-        title: 'Vault 1: Input Guarantees & Constraints',
-        metaClue: 'Stuck on edge cases when prices only drop?',
-        content: `What should happen if the prices keep falling all day (e.g., [9, 7, 4, 1])? Can you return 0 (no trade), or are you forced to buy and sell at the best possible time (even if it's negative profit)? In this problem, we must return the least negative loss!`,
+        title: 'Vault 1: Input Guarantees & Equality',
+        metaClue: 'Wondering if timestamps are guaranteed sorted?',
+        content: 'Timestamps are guaranteed non-decreasing. Are window boundaries inclusive or exclusive? A window of 1000ms starting at t=1000 expires at t=2000, so timestamps[right] - timestamps[left] >= windowMs indicates expiration.',
         revealed: false
       },
       {
         id: 2,
         tier: 'Data Structure Clue',
-        title: 'Vault 2: The Greedy Single-Pass Paradigm',
-        metaClue: 'Want to optimize from O(n²) to O(n)?',
-        content: `A brute force O(n²) tests all pairs. But as you walk through the array from left to right at index i, what is the best possible price to have bought at? It's simply the minimum price seen anywhere from index 0 to i-1! Can we track that in a single variable?`,
+        title: 'Vault 2: Two-Pointer Monotonic Window',
+        metaClue: 'Need O(n) runtime without extra allocations?',
+        content: 'Because the array is sorted, both left and right pointers only move forward. As right advances, increment left until timestamps[right] - timestamps[left] < windowMs.',
         revealed: false
       },
       {
         id: 3,
         tier: 'Edge Case & Complexity',
-        title: 'Vault 3: Subsumed Losses & Initialization',
-        metaClue: 'Watch out for maxProfit initialization traps!',
-        content: `Be careful! If all prices are going down, maxProfit will be negative. If you initialize maxProfit to 0, your function will return 0 instead of the real maximum profit (like -2). Initialize maxProfit to stockPrices[1] - stockPrices[0] and minPrice to stockPrices[0]!`,
+        title: 'Vault 3: Single-Pass Invariant',
+        metaClue: 'Ready to prove O(n) amortized complexity?',
+        content: 'Since each index enters and exits the window at most once, the amortized cost per request is O(1), achieving O(n) total time in O(1) space.',
         revealed: false
       }
     ]
   },
   {
-    id: 'merging-meeting-times',
-    title: 'Calendar Sync — Merging Meeting Times',
+    id: 'idempotent-transaction-ledger',
+    title: 'Transactional Ledger Conflict Detector',
     difficulty: 'Medium',
-    category: 'Sorting & Greedy',
-    companyTags: ['Google', 'Microsoft', 'Uber'],
-    description: `Your company built an in-house calendar tool. They want to add a feature that shows the times in a day when everyone is available.
-
-To do this, you’ll need to know when any team member is in a meeting. Write a function mergeRanges() that takes an array of multiple meeting time ranges and returns an array of condensed ranges.
-
-For example, given:
-  [{ startTime: 0,  endTime: 1 },
-   { startTime: 3,  endTime: 5 },
-   { startTime: 4,  endTime: 8 },
-   { startTime: 10, endTime: 12 },
-   { startTime: 9,  endTime: 10 }]
-
-Your function should return:
-  [{ startTime: 0, endTime: 1 },
-   { startTime: 3, endTime: 8 },
-   { startTime: 9, endTime: 12 }]`,
+    category: 'Intervals & Sorting',
+    companyTags: ['FinTech', 'Coinbase', 'Stripe'],
+    description: `In a high-concurrency financial ledger, transactions with overlapping processing intervals cannot execute in parallel without acquiring an exclusive mutex.
+Given an array of transaction intervals with startTime and endTime, merge all overlapping transaction windows and return the consolidated list of contiguous processing periods.`,
+    functionName: 'mergeTransactionWindows',
+    constraints: [
+      '1 <= intervals.length <= 10^4',
+      '0 <= startTime < endTime <= 10^9',
+      'Target Time Complexity: O(n log n).',
+      'Target Space Complexity: O(n).'
+    ],
     examples: [
       {
-        input: '[{ startTime: 1, endTime: 3 }, { startTime: 2, endTime: 4 }]',
-        output: '[{ startTime: 1, endTime: 4 }]',
-        explanation: 'Meetings overlap from time 2 to 3, so they merge into 1 to 4.'
-      },
-      {
-        input: '[{ startTime: 1, endTime: 2 }, { startTime: 2, endTime: 3 }]',
-        output: '[{ startTime: 1, endTime: 3 }]',
-        explanation: 'Meetings touch back-to-back at 2, so they merge.'
+        input: 'intervals = [[1, 3], [2, 6], [8, 10], [15, 18]]',
+        output: '[[1, 6], [8, 10], [15, 18]]',
+        explanation: 'Intervals [1, 3] and [2, 6] overlap into [1, 6].'
       }
     ],
-    constraints: [
-      'Meeting times are given as integer numbers of 30-minute blocks past 9:00am.',
-      'Meetings may be provided in arbitrary unordered sequence.',
-      'Target time complexity: O(n log n) due to sorting.',
-      'Target space complexity: O(n).'
+    testCases: [
+      {
+        title: 'Test 1: Standard overlapping intervals',
+        input: [[[1, 3], [2, 6], [8, 10], [15, 18]]],
+        expected: [[1, 6], [8, 10], [15, 18]],
+        inputStr: '[[1,3],[2,6],[8,10],[15,18]]'
+      },
+      {
+        title: 'Test 2: Subsumed interval',
+        input: [[[1, 5], [2, 3]]],
+        expected: [[1, 5]],
+        inputStr: '[[1,5],[2,3]]'
+      },
+      {
+        title: 'Test 3: Contiguous abutting boundaries',
+        input: [[[1, 4], [4, 5]]],
+        expected: [[1, 5]],
+        inputStr: '[[1,4],[4,5]]'
+      }
     ],
     starterCode: {
-      javascript: `function mergeRanges(meetings) {
-  // Merge overlapping meeting ranges
+      javascript: `function mergeTransactionWindows(intervals) {
+  // Merge overlapping transaction intervals
   
-  return [];
+  return intervals;
 }`,
-      python: `def merge_ranges(meetings):
-    # Merge overlapping meeting ranges
-    pass`
+      python: `def merge_transaction_windows(intervals):
+    # Merge overlapping transaction intervals
+    return intervals`
     },
     solutionCode: {
-      javascript: `function mergeRanges(meetings) {
-  const sortedMeetings = [...meetings].sort((a, b) => a.startTime - b.startTime);
-  const mergedMeetings = [sortedMeetings[0]];
+      javascript: `function mergeTransactionWindows(intervals) {
+  if (intervals.length <= 1) return intervals;
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+  const merged = [sorted[0]];
 
-  for (let i = 1; i < sortedMeetings.length; i++) {
-    const currentMeeting = sortedMeetings[i];
-    const lastMergedMeeting = mergedMeetings[mergedMeetings.length - 1];
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i];
+    const lastMerged = merged[merged.length - 1];
 
-    if (currentMeeting.startTime <= lastMergedMeeting.endTime) {
-      lastMergedMeeting.endTime = Math.max(lastMergedMeeting.endTime, currentMeeting.endTime);
+    if (current[0] <= lastMerged[1]) {
+      lastMerged[1] = Math.max(lastMerged[1], current[1]);
     } else {
-      mergedMeetings.push(currentMeeting);
+      merged.push(current);
     }
   }
-
-  return mergedMeetings;
+  return merged;
 }`,
-      python: `def merge_ranges(meetings):
-    sorted_meetings = sorted(meetings, key=lambda x: x['start_time'])
-    merged = [sorted_meetings[0]]
-
-    for current in sorted_meetings[1:]:
+      python: `def merge_transaction_windows(intervals):
+    if len(intervals) <= 1:
+        return intervals
+    sorted_intervals = sorted(intervals, key=lambda x: x[0])
+    merged = [sorted_intervals[0]]
+    for current in sorted_intervals[1:]:
         last_merged = merged[-1]
-        if current['start_time'] <= last_merged['end_time']:
-            last_merged['end_time'] = max(last_merged['end_time'], current['end_time'])
+        if current[0] <= last_merged[1]:
+            last_merged[1] = max(last_merged[1], current[1])
         else:
             merged.append(current)
-
     return merged`
     },
     timeComplexity: 'O(n log n) time',
     spaceComplexity: 'O(n) space',
     interviewCakePedagogy: {
-      conceptBreakdown: `What if the meetings were already sorted by start time?
-Once sorted, any meeting that could possibly overlap with our current meeting must come immediately next in line! This turns a complex search into a clean linear sweep.`,
-      commonPitfalls: [
-        'Assuming meetings are already ordered by start time.',
-        'Not handling meetings that touch at exact boundary (startTime == endTime).',
-        'Forgetting that a meeting can be completely enveloped by another (e.g. [1, 10] and [2, 5]).'
-      ]
+      conceptBreakdown: 'Sort intervals by startTime. Once ordered, any interval can only overlap with its predecessor in the output stack.',
+      commonPitfalls: ['Forgetting that an interval can be completely contained within another (e.g. [1, 5] and [2, 3])']
     },
-    scrimbaEmbedId: 'c8D4Pka1',
     hints: [
       {
         id: 1,
         tier: 'Clarifying Questions',
-        title: 'Vault 1: Unordered Interval Sequencing',
-        metaClue: 'What if meetings are out of chronological order?',
-        content: `What happens if the meetings aren't in order? What if a meeting later in the array starts before an earlier meeting? Sorting by startTime first simplifies this problem drastically!`,
+        title: 'Vault 1: Order Guarantees',
+        metaClue: 'Are intervals already sorted by startTime?',
+        content: 'Do not assume intervals arrive pre-sorted. You must sort by start timestamp in O(n log n) first.',
         revealed: false
       },
       {
         id: 2,
         tier: 'Data Structure Clue',
-        title: 'Vault 2: Overlap Boundary Condition',
-        metaClue: 'How to test if two intervals touch or overlap?',
-        content: `If we sort by startTime, how can we check if meeting B overlaps with meeting A? If B.startTime <= A.endTime, they overlap! How do you compute the new endTime? Use Math.max(A.endTime, B.endTime).`,
+        title: 'Vault 2: Sequential Invariant',
+        metaClue: 'How to compare overlapping pairs?',
+        content: 'Compare current interval start against merged[-1] end. If current[0] <= lastMerged[1], update lastMerged[1] = max(lastMerged[1], current[1]).',
         revealed: false
       },
       {
         id: 3,
         tier: 'Edge Case & Complexity',
-        title: 'Vault 3: Subsumed & Contained Meetings',
-        metaClue: 'What if meeting B is completely inside meeting A?',
-        content: `Notice that one meeting could be entirely inside another (e.g., [1, 8] and [2, 5]). Make sure you don't overwrite endTime with 5; always keep Math.max(last.endTime, current.endTime)!`,
+        title: 'Vault 3: Subsumed Boundary Edge',
+        metaClue: 'What if interval B ends BEFORE interval A ends?',
+        content: 'Use Math.max(lastMerged[1], current[1]) so that a short meeting inside a long meeting does not shorten the end boundary.',
         revealed: false
       }
     ]
   },
   {
-    id: 'inflight-entertainment',
-    title: 'Two-Movie Match — In-Flight Entertainment',
-    difficulty: 'Easy',
-    category: 'Hashing / Hash Sets',
-    companyTags: ['Netflix', 'Amazon', 'Spotify'],
-    description: `You've built an in-flight entertainment system with a catalog of movie lengths. Users want to pick exactly two movies that match their flight length perfectly so the movies fill the entire duration of the flight.
-
-Write a function canTwoMoviesFillFlight(flightLength, movieLengths) that takes an integer flightLength (in minutes) and an array of integers movieLengths (in minutes) and returns a boolean indicating whether there are two numbers in movieLengths whose sum equals flightLength.
-
-Assume users won't watch the same movie twice.`,
+    id: 'lru-cache-eviction',
+    title: 'High-Throughput LRU Eviction Stream',
+    difficulty: 'Hard',
+    category: 'Hash Map & Doubly Linked List',
+    companyTags: ['Netflix', 'Meta', 'Google'],
+    description: `Design a high-throughput caching eviction pipeline. Given a capacity 'capacity' and a series of operations in format ['GET', key] or ['PUT', key, value], execute all operations and return an array of outputs (for GET operations, return value or -1 if absent; for PUT, return null).`,
+    functionName: 'simulateLruPipeline',
+    constraints: [
+      '1 <= capacity <= 3000',
+      '0 <= key <= 10^4',
+      '0 <= value <= 10^5',
+      'At most 2 * 10^5 calls to get and put.',
+      'Average Time Complexity per operation: O(1).'
+    ],
     examples: [
       {
-        input: 'flightLength = 120, movieLengths = [60, 40, 75, 80]',
-        output: 'true',
-        explanation: '40 + 80 = 120, which matches flightLength.'
-      },
-      {
-        input: 'flightLength = 120, movieLengths = [60, 40, 75]',
-        output: 'false',
-        explanation: 'No two movies add up to 120 (a user cannot pick the 60-minute movie twice).'
+        input: 'capacity = 2, ops = [["PUT", 1, 1], ["PUT", 2, 2], ["GET", 1], ["PUT", 3, 3], ["GET", 2]]',
+        output: '[null, null, 1, null, -1]',
+        explanation: 'Key 2 is evicted when key 3 is inserted because key 1 was accessed by GET.'
       }
     ],
-    constraints: [
-      'Target time complexity: O(n).',
-      'Target space complexity: O(n).',
-      'You cannot pick the same movie index twice.'
+    testCases: [
+      {
+        title: 'Test 1: Standard LRU sequence',
+        input: [2, [["PUT", 1, 1], ["PUT", 2, 2], ["GET", 1], ["PUT", 3, 3], ["GET", 2]]],
+        expected: [null, null, 1, null, -1],
+        inputStr: 'cap=2, [PUT 1, PUT 2, GET 1, PUT 3, GET 2]'
+      },
+      {
+        title: 'Test 2: Key overwrite updates position',
+        input: [2, [["PUT", 1, 10], ["PUT", 2, 20], ["PUT", 1, 100], ["PUT", 3, 30], ["GET", 2]]],
+        expected: [null, null, null, null, -1],
+        inputStr: 'cap=2, key 1 updated, key 2 evicted'
+      }
     ],
     starterCode: {
-      javascript: `function canTwoMoviesFillFlight(flightLength, movieLengths) {
-  // Determine if two movies sum to flightLength
+      javascript: `function simulateLruPipeline(capacity, operations) {
+  // Implement O(1) LRU pipeline
   
-  return false;
+  return [];
 }`,
-      python: `def can_two_movies_fill_flight(flight_length, movie_lengths):
-    # Determine if two movies sum to flight_length
-    pass`
+      python: `def simulate_lru_pipeline(capacity, operations):
+    # Implement O(1) LRU pipeline
+    return []`
     },
     solutionCode: {
-      javascript: `function canTwoMoviesFillFlight(flightLength, movieLengths) {
-  const movieLengthsSeen = new Set();
+      javascript: `function simulateLruPipeline(capacity, operations) {
+  const map = new Map();
+  const results = [];
 
-  for (let i = 0; i < movieLengths.length; i++) {
-    const currentMovieLength = movieLengths[i];
-    const matchingSecondMovieLength = flightLength - currentMovieLength;
+  for (const op of operations) {
+    const action = op[0];
+    const key = op[1];
 
-    if (movieLengthsSeen.has(matchingSecondMovieLength)) {
-      return true;
+    if (action === 'GET') {
+      if (!map.has(key)) {
+        results.push(-1);
+      } else {
+        const val = map.get(key);
+        map.delete(key);
+        map.set(key, val);
+        results.push(val);
+      }
+    } else if (action === 'PUT') {
+      const val = op[2];
+      if (map.has(key)) {
+        map.delete(key);
+      } else if (map.size >= capacity) {
+        const oldestKey = map.keys().next().value;
+        map.delete(oldestKey);
+      }
+      map.set(key, val);
+      results.push(null);
     }
-
-    movieLengthsSeen.add(currentMovieLength);
   }
-
-  return false;
+  return results;
 }`,
-      python: `def can_two_movies_fill_flight(flight_length, movie_lengths):
-    movie_lengths_seen = set()
+      python: `from collections import OrderedDict
 
-    for first_movie_length in movie_lengths:
-        matching_second_movie_length = flight_length - first_movie_length
-        if matching_second_movie_length in movie_lengths_seen:
-            return True
-        movie_lengths_seen.add(first_movie_length)
+def simulate_lru_pipeline(capacity, operations):
+    cache = OrderedDict()
+    results = []
 
-    return False`
+    for op in operations:
+        action = op[0]
+        key = op[1]
+        if action == 'GET':
+            if key not in cache:
+                results.append(-1)
+            else:
+                cache.move_to_end(key)
+                results.append(cache[key])
+        elif action == 'PUT':
+            val = op[2]
+            if key in cache:
+                cache.move_to_end(key)
+            cache[key] = val
+            if len(cache) > capacity:
+                cache.popitem(last=False)
+            results.append(None)
+    return results`
     },
-    timeComplexity: 'O(n) time',
-    spaceComplexity: 'O(n) space',
+    timeComplexity: 'O(1) average per operation',
+    spaceComplexity: 'O(capacity) space',
     interviewCakePedagogy: {
-      conceptBreakdown: `This is the classic Two-Sum problem. The brute force solution checks every pair in O(n²).
-Instead, by using a Hash Set, we can look up the complementary movie (flightLength - currentLength) in O(1) time as we traverse.`,
-      commonPitfalls: [
-        'Adding the current movie to the set before checking if its complement exists (causes false positive when flightLength is 120 and movie is 60).',
-        'Checking against an array with .includes() which turns lookup back into O(n), making total runtime O(n²).'
-      ]
+      conceptBreakdown: 'Combine a Hash Map for O(1) key lookups with a Doubly Linked List for O(1) node repositioning.',
+      commonPitfalls: ['Linear scans O(n) to find the least recently used element', 'Failing to refresh priority on GET access']
     },
-    scrimbaEmbedId: 'cK6vNku9',
     hints: [
       {
         id: 1,
         tier: 'Clarifying Questions',
-        title: 'Vault 1: Identical Movie Index Protection',
-        metaClue: 'Can you watch the exact same movie twice?',
-        content: `If flightLength is 120 and there is a 60-minute movie, can we watch that same movie twice? No! So we must ensure the pair consists of two distinct indices.`,
+        title: 'Vault 1: Eviction Priority Invariant',
+        metaClue: 'Does GET update the access timestamp?',
+        content: 'Yes! Both GET and PUT operations count as an access and must move the accessed key to the most recently used position.',
         revealed: false
       },
       {
         id: 2,
         tier: 'Data Structure Clue',
-        title: 'Vault 2: Instant O(1) Hash Complement',
-        metaClue: 'What data structure gives O(1) lookup?',
-        content: `For each movie length L, what is the exact second movie length needed? Target is (flightLength - L). What data structure gives us O(1) instant lookup to see if we've already seen that complement? A Hash Set!`,
+        title: 'Vault 2: Map Insertion Order Property',
+        metaClue: 'Can JavaScript Map or Python OrderedDict achieve O(1)?',
+        content: 'JavaScript Map preserves insertion order. Re-inserting with delete() and set() moves an entry to the end in O(1).',
         revealed: false
       },
       {
         id: 3,
         tier: 'Edge Case & Complexity',
-        title: 'Vault 3: The Insertion Order Trap',
-        metaClue: 'Check complement BEFORE or AFTER set.add()?',
-        content: `Check if the complement is in your set BEFORE adding the current movie to the set. That way, a 60-minute movie won't match with itself!`,
+        title: 'Vault 3: Overwriting Existing Keys',
+        metaClue: 'What if a key already exists on PUT?',
+        content: 'If key already exists, overwrite its value and update its position without evicting a separate key.',
         revealed: false
       }
     ]

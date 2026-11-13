@@ -7,7 +7,6 @@ import {
   Terminal, 
   Search, 
   FolderTree, 
-  ExternalLink,
   Radio
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -94,7 +93,7 @@ export const UiDesignStudio: React.FC<UiDesignStudioProps> = ({
       
       {/* Challenge Selector */}
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider font-mono">Mobbin Flow:</span>
+        <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider font-mono">Architecture Flow:</span>
         {UI_CHALLENGES.map((challenge) => {
           const completed = completedFlowIds.includes(challenge.id);
           const active = challenge.id === selectedChallenge.id;
@@ -142,15 +141,9 @@ export const UiDesignStudio: React.FC<UiDesignStudioProps> = ({
                 )}
               </div>
 
-              <a 
-                href="https://mobbin.com" 
-                target="_blank" 
-                rel="noreferrer"
-                className="flex items-center space-x-1 text-[11px] text-purple-400 hover:text-purple-300 transition"
-              >
-                <span>Mobbin Spec</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+              <span className="text-[11px] text-purple-400 font-mono">
+                Production UI Spec
+              </span>
             </div>
 
             <h1 className="text-xl font-bold text-white tracking-tight">{selectedChallenge.title}</h1>

@@ -1,27 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Calendar, 
+  Send, 
+  Mic, 
+  MicOff, 
+  Volume2, 
+  VolumeX, 
   Sparkles, 
-  ArrowRight, 
-  Check, 
-  Clock, 
-  ExternalLink,
-  Flame,
-  X
+  X, 
+  Cpu
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { UserInterviewProfile, DayPlan } from '../types';
+import { UserInterviewProfile, DayPlan, DsaProblem, OnboardingMessage } from '../types';
+import { conductOnboardingTurn, generateDynamicChallenge } from '../services/aiService';
+import { voiceService } from '../services/voiceService';
 
 interface OnboardingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onComplete: (profile: UserInterviewProfile, roadmap: DayPlan[]) => void;
+  onComplete: (profile: UserInterviewProfile, roadmap: DayPlan[], customChallenge?: DsaProblem) => void;
   initialProfile?: UserInterviewProfile | null;
 }
-
-const COMPANIES = ['Google', 'Meta', 'Stripe', 'Linear', 'Apple', 'Netflix', 'Amazon', 'Startup'];
-const ROLES = ['Frontend Engineer', 'Fullstack Engineer', 'UI/Design Engineer', 'Systems Engineer'];
-const SENIORITIES: ('Intern' | 'Junior' | 'Mid-Level' | 'Senior')[] = ['Intern', 'Junior', 'Mid-Level', 'Senior'];
 
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   isOpen,
@@ -29,358 +27,317 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   onComplete,
   initialProfile
 }) => {
-  const [step, setStep] = useState(1);
-  const [company, setCompany] = useState(initialProfile?.targetCompany || 'Linear');
-  const [role, setRole] = useState(initialProfile?.role || 'Frontend Engineer');
-  const [seniority, setSeniority] = useState<'Intern' | 'Junior' | 'Mid-Level' | 'Senior'>(initialProfile?.seniority || 'Junior');
-  const [interviewDate, setInterviewDate] = useState(initialProfile?.interviewDate || '2026-11-20');
-  const [daysRemaining, setDaysRemaining] = useState<number>(7);
-  const [focusAreas, setFocusAreas] = useState<string[]>(['Greedy & Intervals', 'UI State Architecture', 'Accessibility & Edge Cases']);
-  const [calendarSync, setCalendarSync] = useState(false);
+  const [messages, setMessages] = useState<OnboardingMessage[]>([
+    {
+      id: 'init',
+      sender: 'interviewer',
+      text: initialProfile?.targetCompany 
+        ? `Welcome back! We are currently calibrated for ${initialProfile.targetCompany} (${initialProfile.role}). Would you like to recalibrate for a new company, role, or specific upcoming interview date?`
+        : "Welcome to Stackwa. I'm your Technical Interview Lead. Let's calibrate your high-stakes preparation: What company and engineering role are you interviewing for, when is your interview scheduled, and what rounds or topics feel most intimidating right now?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
+  // Read initial greeting aloud on mount if open
+  useEffect(() => {
+    if (isOpen && messages.length === 1) {
+      voiceService.speak(messages[0].text, {
+        onEnd: () => setIsSpeaking(false),
+        onError: () => setIsSpeaking(false)
+      });
+      setIsSpeaking(true);
+    }
+    return () => {
+      voiceService.stopSpeaking();
+      voiceService.stopListening();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const toggleFocusArea = (area: string) => {
-    setFocusAreas(prev => 
-      prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]
-    );
+  const handleVoiceToggle = () => {
+    if (isListening) {
+      voiceService.stopListening();
+      setIsListening(false);
+    } else {
+      const started = voiceService.startListening(
+        (transcript) => {
+          setInputText(transcript);
+        },
+        {
+          onError: () => setIsListening(false),
+          onEnd: () => setIsListening(false)
+        }
+      );
+      setIsListening(started);
+    }
   };
 
-  const handleFinish = () => {
-    // Generate tailored 7-day roadmap based on company and role
-    const roadmap: DayPlan[] = [
-      {
-        dayNumber: 1,
-        dateLabel: 'Day 1 — Foundation',
-        theme: 'Greedy Single-Pass & Array Traversal',
-        dsaProblemId: 'stock-price-maximizer',
-        uiChallengeId: 'linear-command-palette',
-        dailyRitual: 'Morning 20m: Articulate time complexity constraints out loud before writing a single line of code.',
-        isCompleted: true
-      },
-      {
-        dayNumber: 2,
-        dateLabel: 'Day 2 — State Architecture',
-        theme: 'Draft vs Global State Isolation & Modal Traps',
-        dsaProblemId: 'merging-meeting-times',
-        uiChallengeId: 'linear-command-palette',
-        dailyRitual: 'Draw component state boundaries on paper before building React handlers.',
-        isCompleted: false
-      },
-      {
-        dayNumber: 3,
-        dateLabel: 'Day 3 — Interval Synchronization',
-        theme: 'Sorting & Overlapping Interval Condensation',
-        dsaProblemId: 'merging-meeting-times',
-        uiChallengeId: 'airbnb-filter-drawer',
-        dailyRitual: 'Test edge cases where intervals touch back-to-back at the exact boundary.',
-        isCompleted: false
-      },
-      {
-        dayNumber: 4,
-        dateLabel: 'Day 4 — Defensive UI Engineering',
-        theme: 'Edge-Case Radar: Offline, Skeletons, and Errors',
-        dsaProblemId: 'inflight-entertainment',
-        uiChallengeId: 'airbnb-filter-drawer',
-        dailyRitual: 'Verify that every filter change doesn\'t re-fetch unapplied server queries.',
-        isCompleted: false
-      },
-      {
-        dayNumber: 5,
-        dateLabel: 'Day 5 — O(1) Hash Complements',
-        theme: 'Complementary Matching & Set Lookups',
-        dsaProblemId: 'inflight-entertainment',
-        uiChallengeId: 'spotify-queue-drawer',
-        dailyRitual: 'Guard against self-matching items before inserting into hash sets.',
-        isCompleted: false
-      },
-      {
-        dayNumber: 6,
-        dateLabel: 'Day 6 — Persistent Audio Context',
-        theme: 'Root Layout Mounting & Optimistic Queue Updates',
-        dsaProblemId: 'stock-price-maximizer',
-        uiChallengeId: 'spotify-queue-drawer',
-        dailyRitual: 'Simulate network rollback scenarios during drag-and-drop reordering.',
-        isCompleted: false
-      },
-      {
-        dayNumber: 7,
-        dateLabel: 'Day 7 — Mock Interview Dress Rehearsal',
-        theme: 'Full FAANG Simulation & Behavioral Readiness',
-        dsaProblemId: 'stock-price-maximizer',
-        uiChallengeId: 'linear-command-palette',
-        dailyRitual: 'Complete a full timed session with the Socratic AI Coach and export your receipt.',
-        isCompleted: false
-      }
-    ];
+  const handleSendMessage = async () => {
+    const text = inputText.trim();
+    if (!text || isTyping || isGeneratingPlan) return;
 
-    const profile: UserInterviewProfile = {
-      targetCompany: company,
-      role,
-      seniority,
-      interviewDate,
-      daysRemaining,
-      focusAreas,
-      calendarConnected: calendarSync,
-      onboardingCompleted: true
+    voiceService.stopSpeaking();
+    setIsSpeaking(false);
+
+    const userMsg: OnboardingMessage = {
+      id: `usr-${Date.now()}`,
+      sender: 'candidate',
+      text,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    onComplete(profile, roadmap);
-    onClose();
+    const newHistory = [...messages, userMsg];
+    setMessages(newHistory);
+    setInputText('');
+    setIsTyping(true);
+
+    try {
+      const result = await conductOnboardingTurn(newHistory, text);
+
+      const aiMsg: OnboardingMessage = {
+        id: `ai-${Date.now()}`,
+        sender: 'interviewer',
+        text: result.replyText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+
+      setMessages(prev => [...prev, aiMsg]);
+      setIsTyping(false);
+
+      // Speak interviewer reply
+      setIsSpeaking(true);
+      voiceService.speak(result.replyText, {
+        onEnd: () => setIsSpeaking(false),
+        onError: () => setIsSpeaking(false)
+      });
+
+      // If calibration is complete, synthesize full custom plan & challenge
+      if (result.isComplete && result.extractedProfile) {
+        setIsGeneratingPlan(true);
+
+        const extracted = result.extractedProfile;
+        const targetCompany = extracted.targetCompany || 'Tech Company';
+        const role = extracted.role || 'Software Engineer';
+        const seniority = extracted.seniority || 'Mid-Level';
+        const days = Math.max(3, extracted.daysRemaining || 7);
+        const focusAreas = extracted.focusAreas || ['System Architecture', 'Algorithmic Optimization', 'Defensive Edge Cases'];
+
+        // Synthesize dynamic challenge for their exact company
+        const customChallenge = await generateDynamicChallenge(targetCompany, role, focusAreas[0]);
+
+        // Generate tailored daywise roadmap matching their exact timeline
+        const roadmap: DayPlan[] = [];
+        for (let d = 1; d <= Math.min(days, 14); d++) {
+          roadmap.push({
+            dayNumber: d,
+            dateLabel: `Day ${d} — ${d === 1 ? 'Diagnostic & Constraints' : d === days ? 'Final Mock Simulation' : 'Deep Mastery'}`,
+            theme: d === 1 
+              ? `${targetCompany} Core Invariants & Complexity` 
+              : `${focusAreas[(d - 1) % focusAreas.length]} Deep Dive`,
+            dsaProblemId: customChallenge.id,
+            uiChallengeId: 'linear-command-palette',
+            dailyRitual: `Spend 25 minutes solving ${targetCompany} algorithmic boundaries without looking at hints.`,
+            isCompleted: false
+          });
+        }
+
+        const profile: UserInterviewProfile = {
+          targetCompany,
+          role,
+          seniority,
+          interviewDate: extracted.interviewDate || new Date(Date.now() + days * 86400000).toISOString().split('T')[0],
+          daysRemaining: days,
+          focusAreas,
+          calendarConnected: false,
+          onboardingCompleted: true
+        };
+
+        setTimeout(() => {
+          setIsGeneratingPlan(false);
+          onComplete(profile, roadmap, customChallenge);
+          onClose();
+        }, 1500);
+      }
+    } catch (e) {
+      setIsTyping(false);
+      console.warn("Error in onboarding turn:", e);
+    }
   };
 
-  // Google Calendar Quick Sync URL (opens official Google Calendar event creation)
-  const getGoogleCalendarUrl = () => {
-    const title = encodeURIComponent(`Stackwa Interview Prep: ${company} (${role})`);
-    const details = encodeURIComponent(`Daily Socratic practice on Stackwa.\nTarget: ${company}\nRole: ${role}\nFocus: ${focusAreas.join(', ')}`);
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}`;
+  const handleToggleAudio = () => {
+    if (isSpeaking) {
+      voiceService.stopSpeaking();
+      setIsSpeaking(false);
+    } else {
+      const lastAiMessage = [...messages].reverse().find(m => m.sender === 'interviewer');
+      if (lastAiMessage) {
+        setIsSpeaking(true);
+        voiceService.speak(lastAiMessage.text, {
+          onEnd: () => setIsSpeaking(false),
+          onError: () => setIsSpeaking(false)
+        });
+      }
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-lg">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="relative w-full max-w-xl oled-surface rounded-3xl p-8 border border-white/10 shadow-2xl overflow-hidden"
+        exit={{ opacity: 0, scale: 0.94 }}
+        className="relative w-full max-w-2xl oled-panel rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl flex flex-col h-[650px] overflow-hidden"
       >
-        {/* Subtle Brand Accent Glow */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-rose-600/10 rounded-full blur-3xl pointer-events-none" />
+        {/* Subtle Ambient Background Sweep */}
+        <div className="absolute top-0 right-0 w-72 h-72 bg-rose-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        <button 
-          onClick={onClose}
-          className="absolute top-6 right-6 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        <div className="mb-6 space-y-1">
-          <div className="flex items-center space-x-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
-              Personalized Calibration
-            </span>
-            <span className="text-xs text-neutral-400">Step {step} of 3</span>
-          </div>
-          <h2 className="text-xl font-extrabold text-white">
-            {step === 1 && "What interview are you preparing for?"}
-            {step === 2 && "Timeline & Focus Areas"}
-            {step === 3 && "Calendar Sync & Daily Practice Rituals"}
-          </h2>
-          <p className="text-xs text-neutral-400">
-            Stackwa tailors its Socratic questions, hint depth, and UI design challenges to modern 2026 hiring standards.
-          </p>
-        </div>
-
-        {/* Step 1: Company, Role & Seniority */}
-        {step === 1 && (
-          <div className="space-y-5">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-2">Target Company</label>
-              <div className="grid grid-cols-4 gap-2">
-                {COMPANIES.map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCompany(c)}
-                    className={`py-2 px-3 rounded-xl text-xs font-semibold transition border ${
-                      company === c 
-                        ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/20' 
-                        : 'bg-neutral-900/60 text-neutral-400 border-white/5 hover:border-white/15 hover:text-white'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-white/10">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-rose-600/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
+              <Sparkles className="w-5 h-5" />
             </div>
-
             <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-2">Target Role</label>
-              <div className="grid grid-cols-2 gap-2">
-                {ROLES.map(r => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setRole(r)}
-                    className={`py-2.5 px-3 rounded-xl text-xs font-medium transition text-left border ${
-                      role === r 
-                        ? 'bg-white/10 text-white border-white/30' 
-                        : 'bg-neutral-900/60 text-neutral-400 border-white/5 hover:border-white/10'
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
+              <div className="flex items-center space-x-2">
+                <h3 className="text-base font-bold text-white tracking-tight">AI Interview Calibration</h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20 font-mono">
+                  Socratic Lead
+                </span>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-2">Seniority</label>
-              <div className="grid grid-cols-4 gap-2">
-                {SENIORITIES.map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSeniority(s)}
-                    className={`py-2 rounded-xl text-xs font-medium transition border ${
-                      seniority === s 
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 font-bold' 
-                        : 'bg-neutral-900/60 text-neutral-400 border-white/5 hover:border-white/10'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Date & Focus Areas */}
-        {step === 2 && (
-          <div className="space-y-5">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-neutral-300">When is your interview?</label>
-                <input
-                  type="date"
-                  value={interviewDate}
-                  onChange={(e) => setInterviewDate(e.target.value)}
-                  className="bg-neutral-900 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: 'In 7 Days', days: 7 },
-                  { label: 'In 14 Days', days: 14 },
-                  { label: 'In 30 Days', days: 30 }
-                ].map(item => (
-                  <button
-                    key={item.days}
-                    type="button"
-                    onClick={() => {
-                      setDaysRemaining(item.days);
-                      const d = new Date();
-                      d.setDate(d.getDate() + item.days);
-                      setInterviewDate(d.toISOString().split('T')[0]);
-                    }}
-                    className={`py-3 rounded-xl text-xs font-semibold transition border flex flex-col items-center space-y-1 ${
-                      daysRemaining === item.days 
-                        ? 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/20' 
-                        : 'bg-neutral-900/60 text-neutral-400 border-white/5 hover:border-white/10'
-                    }`}
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-2">Focus Areas to Prioritize</label>
-              <div className="space-y-2">
-                {[
-                  'Greedy Algorithms & Arrays (Interview Cake)',
-                  'Interval Merging & Overlap Bounds',
-                  'Frontend UI State Architecture (Mobbin)',
-                  'Defensive Edge Cases (Offline, Skeletons, Errors)',
-                  'Big-O Complexity & Trade-off Articulation'
-                ].map(area => {
-                  const active = focusAreas.includes(area);
-                  return (
-                    <div
-                      key={area}
-                      onClick={() => toggleFocusArea(area)}
-                      className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-center justify-between ${
-                        active 
-                          ? 'bg-rose-950/20 border-rose-500/40 text-rose-200' 
-                          : 'bg-neutral-900/60 border-white/5 text-neutral-400 hover:border-white/10'
-                      }`}
-                    >
-                      <span>{area}</span>
-                      {active && <Check className="w-4 h-4 text-rose-400" />}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Calendar Sync & Ritual Preview */}
-        {step === 3 && (
-          <div className="space-y-5">
-            <div className="p-4 rounded-2xl bg-neutral-900/80 border border-white/10 space-y-3">
-              <div className="flex items-center space-x-2 text-rose-400 font-bold text-xs">
-                <Flame className="w-4 h-4" />
-                <span>Your Daywise Practice Ritual</span>
-              </div>
-              <p className="text-xs text-neutral-300 leading-relaxed">
-                Based on your target at <strong className="text-white">{company}</strong> ({role}), Stackwa will schedule a 30-minute daily ritual:
+              <p className="text-xs text-neutral-400">
+                Conversational calibration tailoring Stackwa to your specific company, role, & date.
               </p>
-              <ul className="text-xs text-neutral-400 space-y-1.5 pl-4 list-disc">
-                <li><strong className="text-neutral-200">10m:</strong> Socratic hint vault breakdown without looking at solution code.</li>
-                <li><strong className="text-neutral-200">10m:</strong> Mobbin X-Ray component mapping & state challenge.</li>
-                <li><strong className="text-neutral-200">10m:</strong> Code execution against edge cases + live AI receipt.</li>
-              </ul>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold text-white flex items-center space-x-1.5">
-                  <Calendar className="w-4 h-4 text-sky-400" />
-                  <span>Google Calendar Integration</span>
-                </h4>
-                <p className="text-[11px] text-neutral-400 mt-0.5">
-                  Optionally sync daily 30-min preparation reminders to your calendar.
-                </p>
-              </div>
-
-              <a
-                href={getGoogleCalendarUrl()}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => setCalendarSync(true)}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 border border-sky-500/30 transition flex items-center space-x-1"
-              >
-                <span>Add to Calendar</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
             </div>
           </div>
-        )}
 
-        {/* Modal Footer Controls */}
-        <div className="mt-8 pt-4 border-t border-white/10 flex items-center justify-between">
-          {step > 1 ? (
+          <div className="flex items-center space-x-2">
             <button
-              onClick={() => setStep(step - 1)}
-              className="text-xs font-semibold text-neutral-400 hover:text-white transition"
+              onClick={handleToggleAudio}
+              className={`p-2 rounded-xl transition border ${
+                isSpeaking 
+                  ? 'bg-rose-600/20 text-rose-300 border-rose-500/30 animate-pulse' 
+                  : 'bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white border-white/5'
+              }`}
+              title={isSpeaking ? "Mute Interviewer Voice" : "Listen to Interviewer Voice"}
             >
-              Back
+              {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </button>
-          ) : <div />}
 
-          {step < 3 ? (
             <button
-              onClick={() => setStep(step + 1)}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-white text-black hover:bg-neutral-200 transition flex items-center space-x-1.5"
+              onClick={() => {
+                voiceService.stopSpeaking();
+                onClose();
+              }}
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition"
             >
-              <span>Continue</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
-          ) : (
-            <button
-              onClick={handleFinish}
-              className="px-6 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition flex items-center space-x-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Launch Custom Roadmap</span>
-            </button>
-          )}
+          </div>
         </div>
 
+        {/* Conversation Stream */}
+        <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+          {messages.map(msg => (
+            <div
+              key={msg.id}
+              className={`flex items-start ${msg.sender === 'candidate' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[85%] rounded-2xl p-4 text-xs leading-relaxed space-y-1 ${
+                  msg.sender === 'candidate'
+                    ? 'bg-rose-600/20 border border-rose-500/40 text-rose-100 rounded-tr-none'
+                    : 'bg-neutral-900/90 border border-white/10 text-neutral-200 rounded-tl-none'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400 mb-1">
+                  <span className={msg.sender === 'candidate' ? 'text-rose-400 font-bold' : 'text-neutral-300 font-bold'}>
+                    {msg.sender === 'candidate' ? 'You' : 'AI Interview Lead'}
+                  </span>
+                  <span>{msg.timestamp}</span>
+                </div>
+                <p className="whitespace-pre-line">{msg.text}</p>
+              </div>
+            </div>
+          ))}
+
+          {isTyping && (
+            <div className="flex items-center space-x-2 text-xs text-neutral-400 p-2">
+              <div className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span>Interviewer is evaluating your response...</span>
+            </div>
+          )}
+
+          {isGeneratingPlan && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-4 rounded-2xl bg-neutral-950 border border-rose-500/40 text-center space-y-2"
+            >
+              <div className="flex items-center justify-center space-x-2 text-rose-400 font-bold text-xs">
+                <Cpu className="w-4 h-4 animate-spin" />
+                <span>Synthesizing Company-Specific Challenges & Daywise Plan...</span>
+              </div>
+              <p className="text-[11px] text-neutral-400">
+                Grounding test cases, constraints, and architecture in your target role.
+              </p>
+            </motion.div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Bar with Voice Support */}
+        <div className="pt-3 border-t border-white/10">
+          <div className="flex items-center space-x-2 bg-black/70 rounded-2xl p-2 border border-white/15 focus-within:border-rose-500 transition">
+            <button
+              type="button"
+              onClick={handleVoiceToggle}
+              className={`p-2.5 rounded-xl transition ${
+                isListening 
+                  ? 'bg-rose-600 text-white animate-pulse' 
+                  : 'bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white'
+              }`}
+              title={isListening ? "Stop listening" : "Speak via Voice"}
+            >
+              {isListening ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+            </button>
+
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder={isListening ? "Listening to your voice..." : "Type your target company, role, timeline, and focus areas..."}
+              className="flex-1 bg-transparent text-xs text-white placeholder-neutral-500 focus:outline-none px-2"
+              disabled={isTyping || isGeneratingPlan}
+            />
+
+            <button
+              onClick={handleSendMessage}
+              disabled={!inputText.trim() || isTyping || isGeneratingPlan}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center space-x-1.5 transition"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Send</span>
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-neutral-500 mt-2 px-1">
+            <span>Example: "Senior Frontend Engineer at Stripe in 18 days, nervous about concurrency & payment state"</span>
+            <span>Supports Voice (Mic) & Keyboard</span>
+          </div>
+        </div>
       </motion.div>
     </div>
   );

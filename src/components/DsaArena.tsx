@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Play, 
   CheckCircle, 
@@ -7,42 +7,51 @@ import {
   Unlock, 
   Clock, 
   Sparkles, 
-  RotateCcw,
-  XCircle,
-  Check,
-  Zap,
-  Repeat
+  RotateCcw, 
+  XCircle, 
+  Check, 
+  Zap, 
+  Repeat,
+  Volume2,
+  VolumeX,
+  PlusCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { DSA_PROBLEMS } from '../data/dsaProblems';
-import { DsaProblem } from '../types';
+import { DsaProblem, InterviewClarifyingQuestion } from '../types';
 import { ScrimbaPlayer } from './ScrimbaPlayer';
+import { InterviewTimer } from './InterviewTimer';
+import { RaiseHandModal } from './RaiseHandModal';
+import { executeCodeStrict, ExecutionOutcome } from '../services/codeExecutionService';
+import { voiceService } from '../services/voiceService';
 
 interface DsaArenaProps {
   onSolveProblem: (problemId: string) => void;
   solvedProblemIds: string[];
   onTriggerAiPrompt?: (prompt: string) => void;
-}
-
-interface TestCaseResult {
-  title: string;
-  input: string;
-  expected: string;
-  actual: string;
-  passed: boolean;
+  customProblems?: DsaProblem[];
+  onOpenCalibration?: () => void;
+  onUpdateExecutionOutcome?: (outcome: ExecutionOutcome, hintsUnlocked: number, clarifyingCount: number) => void;
 }
 
 export const DsaArena: React.FC<DsaArenaProps> = ({ 
   onSolveProblem, 
   solvedProblemIds,
-  onTriggerAiPrompt 
+  onTriggerAiPrompt,
+  customProblems = [],
+  onOpenCalibration,
+  onUpdateExecutionOutcome
 }) => {
-  const [selectedProblem, setSelectedProblem] = useState<DsaProblem>(DSA_PROBLEMS[0]);
+  const allProblems = customProblems.length > 0 
+    ? [...customProblems, ...DSA_PROBLEMS.filter(p => !customProblems.some(cp => cp.id === p.id))]
+    : DSA_PROBLEMS;
+
+  const [selectedProblem, setSelectedProblem] = useState<DsaProblem>(allProblems[0]);
   const [language, setLanguage] = useState<'javascript' | 'python'>('javascript');
   const [code, setCode] = useState<string>(selectedProblem.starterCode.javascript);
   
-  // 3D Holo-Deck Flip state: false = Code Editor (Front), true = Scrimba Player (Back)
+  // 3D Holo-Deck Flip state: false = Code Editor, true = Spatial Solution Player
   const [isFlipped, setIsFlipped] = useState(false);
 
   // Focus Dimming state: true for 1.5 seconds after unlocking a vault
@@ -59,34 +68,48 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
   const [selectionPosition, setSelectionPosition] = useState<{ x: number; y: number } | null>(null);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Voice speech state
+  const [isSpeakingDescription, setIsSpeakingDescription] = useState(false);
+  const [speakingVaultId, setSpeakingVaultId] = useState<number | null>(null);
+
+  // "Raise Hand" Clarifying Questions state
+  const [isRaiseHandOpen, setIsRaiseHandOpen] = useState(false);
+  const [clarifyingQuestions, setClarifyingQuestions] = useState<InterviewClarifyingQuestion[]>([]);
+
   // Real Test Results State
   const [testRun, setTestRun] = useState<{
     isRunning: boolean;
     hasRun: boolean;
-    allPassed: boolean;
-    tests: TestCaseResult[];
-    errorMessage?: string;
-    executionTimeMs?: number;
+    outcome: ExecutionOutcome | null;
   }>({
     isRunning: false,
     hasRun: false,
-    allPassed: false,
-    tests: []
+    outcome: null
   });
+
+  // Synchronize when custom problem arrives
+  useEffect(() => {
+    if (customProblems.length > 0 && selectedProblem.id !== customProblems[0].id) {
+      setSelectedProblem(customProblems[0]);
+      setCode(customProblems[0].starterCode[language]);
+    }
+  }, [customProblems]);
 
   // Handle problem change
   const handleSelectProblem = (problem: DsaProblem) => {
+    voiceService.stopSpeaking();
+    setIsSpeakingDescription(false);
     setSelectedProblem(problem);
     setCode(problem.starterCode[language]);
     setIsFlipped(false);
-    setTestRun({ isRunning: false, hasRun: false, allPassed: false, tests: [] });
+    setTestRun({ isRunning: false, hasRun: false, outcome: null });
   };
 
   // Handle language switch
   const handleLanguageChange = (lang: 'javascript' | 'python') => {
     setLanguage(lang);
     setCode(selectedProblem.starterCode[lang]);
-    setTestRun({ isRunning: false, hasRun: false, allPassed: false, tests: [] });
+    setTestRun({ isRunning: false, hasRun: false, outcome: null });
   };
 
   // Vault Unlock Action with spring physics & Focus Dimming
@@ -101,7 +124,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
 
       // Trigger Focus Dimming on code editor for 1.5s
       setIsFocusDimmed(true);
-      setActiveVaultNotification(`Vault ${vaultIndex + 1} Unlocked: Take 10 seconds to internalize the hint.`);
+      setActiveVaultNotification(`Vault ${vaultIndex + 1} Unlocked: Take 10 seconds to internalize this hint before writing code.`);
       setTimeout(() => {
         setIsFocusDimmed(false);
         setActiveVaultNotification(null);
@@ -134,123 +157,69 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
     setSelectionPosition(null);
   };
 
-  // Real in-browser JavaScript evaluation engine
-  const executeCode = (): { allPassed: boolean; tests: TestCaseResult[]; error?: string; timeMs: number } => {
-    const startTime = performance.now();
-    try {
-      if (language === 'python') {
-        const timeMs = +(performance.now() - startTime).toFixed(2);
-        return {
-          allPassed: true,
-          timeMs,
-          tests: [
-            { title: 'Python Syntax & Logic Check', input: 'sample_inputs', expected: 'Valid', actual: 'Valid', passed: true },
-            { title: 'Target Algorithm Complexity', input: 'O(n) test', expected: selectedProblem.timeComplexity, actual: selectedProblem.timeComplexity, passed: true }
-          ]
-        };
-      }
+  // Real in-browser JavaScript & Python evaluation engine
+  const handleRunCode = async () => {
+    setTestRun({ isRunning: true, hasRun: false, outcome: null });
+    
+    // Strict execution against real test cases
+    const outcome = await executeCodeStrict(
+      language,
+      selectedProblem.functionName,
+      code,
+      selectedProblem.testCases
+    );
 
-      if (selectedProblem.id === 'stock-price-maximizer') {
-        const fn = new Function(`${code}; return getMaxProfit;`)();
-        if (typeof fn !== 'function') throw new Error("Function 'getMaxProfit' not found. Ensure your function is named getMaxProfit.");
+    setTestRun({
+      isRunning: false,
+      hasRun: true,
+      outcome
+    });
 
-        const r1 = fn([10, 7, 5, 8, 11, 9]);
-        const r2 = fn([10, 8, 6, 4, 2]);
-        const r3 = fn([1, 5, 3, 2]);
-        const timeMs = +(performance.now() - startTime).toFixed(2);
+    onUpdateExecutionOutcome?.(outcome, currentUnlockedCount, clarifyingQuestions.length);
 
-        const tests: TestCaseResult[] = [
-          { title: 'Test 1: Optimal Day Peak', input: '[10, 7, 5, 8, 11, 9]', expected: '6', actual: String(r1), passed: r1 === 6 },
-          { title: 'Test 2: Falling Prices (Min Loss)', input: '[10, 8, 6, 4, 2]', expected: '-2', actual: String(r2), passed: r2 === -2 },
-          { title: 'Test 3: Quick Spike ($1 -> $5)', input: '[1, 5, 3, 2]', expected: '4', actual: String(r3), passed: r3 === 4 }
-        ];
-
-        return { allPassed: tests.every(t => t.passed), tests, timeMs };
-      } else if (selectedProblem.id === 'merging-meeting-times') {
-        const fn = new Function(`${code}; return mergeRanges;`)();
-        if (typeof fn !== 'function') throw new Error("Function 'mergeRanges' not found.");
-
-        const r1 = fn([{ startTime: 1, endTime: 3 }, { startTime: 2, endTime: 4 }]);
-        const r2 = fn([{ startTime: 1, endTime: 5 }, { startTime: 2, endTime: 3 }]);
-        const timeMs = +(performance.now() - startTime).toFixed(2);
-
-        const r1Str = JSON.stringify(r1);
-        const r2Str = JSON.stringify(r2);
-        const exp1 = JSON.stringify([{ startTime: 1, endTime: 4 }]);
-        const exp2 = JSON.stringify([{ startTime: 1, endTime: 5 }]);
-
-        const tests: TestCaseResult[] = [
-          { title: 'Test 1: Overlapping intervals merge', input: '[{1,3}, {2,4}]', expected: exp1, actual: r1Str, passed: r1Str === exp1 },
-          { title: 'Test 2: Subsumed meeting interval', input: '[{1,5}, {2,3}]', expected: exp2, actual: r2Str, passed: r2Str === exp2 }
-        ];
-
-        return { allPassed: tests.every(t => t.passed), tests, timeMs };
-      } else if (selectedProblem.id === 'inflight-entertainment') {
-        const fn = new Function(`${code}; return canTwoMoviesFillFlight;`)();
-        if (typeof fn !== 'function') throw new Error("Function 'canTwoMoviesFillFlight' not found.");
-
-        const r1 = fn(120, [60, 40, 75, 80]);
-        const r2 = fn(120, [60, 40, 75]);
-        const timeMs = +(performance.now() - startTime).toFixed(2);
-
-        const tests: TestCaseResult[] = [
-          { title: 'Test 1: Distinct pair sums to 120 (40 + 80)', input: '120, [60, 40, 75, 80]', expected: 'true', actual: String(r1), passed: r1 === true },
-          { title: 'Test 2: Single 60m cannot match itself', input: '120, [60, 40, 75]', expected: 'false', actual: String(r2), passed: r2 === false }
-        ];
-
-        return { allPassed: tests.every(t => t.passed), tests, timeMs };
-      }
-
-      return { allPassed: true, tests: [], timeMs: +(performance.now() - startTime).toFixed(2) };
-    } catch (err: any) {
-      return { 
-        allPassed: false, 
-        tests: [], 
-        error: err.message || 'Execution error', 
-        timeMs: +(performance.now() - startTime).toFixed(2) 
-      };
+    if (outcome.allPassed) {
+      try {
+        confetti({
+          particleCount: 110,
+          spread: 90,
+          origin: { y: 0.6 }
+        });
+      } catch {}
     }
   };
 
-  const handleRunCode = () => {
-    setTestRun({ isRunning: true, hasRun: false, allPassed: false, tests: [] });
-    setTimeout(() => {
-      const result = executeCode();
-      setTestRun({
-        isRunning: false,
-        hasRun: true,
-        allPassed: result.allPassed,
-        tests: result.tests,
-        errorMessage: result.error,
-        executionTimeMs: result.timeMs
-      });
-    }, 250);
+  const handleSubmitSolution = async () => {
+    await handleRunCode();
+    if (testRun.outcome?.allPassed) {
+      onSolveProblem(selectedProblem.id);
+    }
   };
 
-  const handleSubmitSolution = () => {
-    setTestRun({ isRunning: true, hasRun: false, allPassed: false, tests: [] });
-    setTimeout(() => {
-      const result = executeCode();
-      setTestRun({
-        isRunning: false,
-        hasRun: true,
-        allPassed: result.allPassed,
-        tests: result.tests,
-        errorMessage: result.error,
-        executionTimeMs: result.timeMs
+  // Voice narration helpers
+  const handleToggleDescriptionVoice = () => {
+    if (isSpeakingDescription) {
+      voiceService.stopSpeaking();
+      setIsSpeakingDescription(false);
+    } else {
+      setIsSpeakingDescription(true);
+      voiceService.speak(`${selectedProblem.title}. ${selectedProblem.description}`, {
+        onEnd: () => setIsSpeakingDescription(false),
+        onError: () => setIsSpeakingDescription(false)
       });
+    }
+  };
 
-      if (result.allPassed) {
-        onSolveProblem(selectedProblem.id);
-        try {
-          confetti({
-            particleCount: 110,
-            spread: 90,
-            origin: { y: 0.6 }
-          });
-        } catch {}
-      }
-    }, 350);
+  const handleToggleVaultVoice = (vaultId: number, content: string) => {
+    if (speakingVaultId === vaultId) {
+      voiceService.stopSpeaking();
+      setSpeakingVaultId(null);
+    } else {
+      setSpeakingVaultId(vaultId);
+      voiceService.speak(content, {
+        onEnd: () => setSpeakingVaultId(null),
+        onError: () => setSpeakingVaultId(null)
+      });
+    }
   };
 
   const isSolved = solvedProblemIds.includes(selectedProblem.id);
@@ -258,30 +227,50 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       
-      {/* Problem Selection Strip */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider font-mono">Curriculum:</span>
-        {DSA_PROBLEMS.map((problem) => {
-          const solved = solvedProblemIds.includes(problem.id);
-          const active = problem.id === selectedProblem.id;
-          return (
+      {/* Top Strip: Curriculum Switcher + Interview Timer + Raise Hand */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-white/5">
+        
+        {/* Challenge Selection Strip */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-neutral-400 font-mono uppercase tracking-wider">Challenges:</span>
+          {allProblems.map((problem) => {
+            const solved = solvedProblemIds.includes(problem.id);
+            const active = problem.id === selectedProblem.id;
+            return (
+              <button
+                key={problem.id}
+                onClick={() => handleSelectProblem(problem)}
+                className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition border ${
+                  active
+                    ? 'bg-rose-600/20 text-rose-300 border-rose-500 shadow-md shadow-rose-600/10'
+                    : 'bg-neutral-900/60 text-neutral-400 border-white/5 hover:border-white/15 hover:text-white'
+                }`}
+              >
+                {solved && <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />}
+                <span className="max-w-[150px] truncate">{problem.title}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  {problem.difficulty}
+                </span>
+              </button>
+            );
+          })}
+
+          {onOpenCalibration && (
             <button
-              key={problem.id}
-              onClick={() => handleSelectProblem(problem)}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition border ${
-                active
-                  ? 'bg-rose-600/20 text-rose-300 border-rose-500 shadow-md shadow-rose-600/10'
-                  : 'bg-neutral-900/60 text-neutral-400 border-white/5 hover:border-white/15 hover:text-white'
-              }`}
+              onClick={onOpenCalibration}
+              className="flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-medium text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition"
+              title="Generate tailored problem for your dream company"
             >
-              {solved && <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />}
-              <span>{problem.title}</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                {problem.difficulty}
-              </span>
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>Calibrate New Challenge</span>
             </button>
-          );
-        })}
+          )}
+        </div>
+
+        {/* Live Interview Screen Timer */}
+        <div className="flex items-center space-x-3">
+          <InterviewTimer initialMinutes={45} />
+        </div>
       </div>
 
       {/* Main Split Grid */}
@@ -304,9 +293,24 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                   </span>
                 )}
               </div>
-              <div className="flex items-center space-x-1 text-xs text-neutral-400">
-                <Clock className="w-3.5 h-3.5 text-neutral-500" />
-                <span>{selectedProblem.timeComplexity}</span>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleToggleDescriptionVoice}
+                  className={`p-1.5 rounded-lg border text-xs transition ${
+                    isSpeakingDescription 
+                      ? 'bg-rose-600/30 text-rose-300 border-rose-500 animate-pulse' 
+                      : 'bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white border-white/5'
+                  }`}
+                  title={isSpeakingDescription ? "Stop voice readout" : "Read problem aloud (TTS)"}
+                >
+                  {isSpeakingDescription ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                </button>
+
+                <div className="flex items-center space-x-1 text-xs text-neutral-400 font-mono">
+                  <Clock className="w-3.5 h-3.5 text-neutral-500" />
+                  <span>{selectedProblem.timeComplexity}</span>
+                </div>
               </div>
             </div>
 
@@ -324,9 +328,19 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
               {selectedProblem.description}
             </p>
 
+            {/* Constraints */}
+            <div className="space-y-1.5 pt-2 border-t border-white/5">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 font-mono">Constraints:</h3>
+              <ul className="text-xs text-neutral-400 space-y-1 list-disc pl-4 font-mono">
+                {selectedProblem.constraints.map((c, idx) => (
+                  <li key={idx}>{c}</li>
+                ))}
+              </ul>
+            </div>
+
             {/* Examples */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Examples:</h3>
+            <div className="space-y-2 pt-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 font-mono">Examples:</h3>
               {selectedProblem.examples.map((ex, idx) => (
                 <div key={idx} className="bg-neutral-950/80 rounded-xl p-3 border border-white/5 text-xs font-mono space-y-1">
                   <div><span className="text-neutral-500">Input:</span> <span className="text-sky-300">{ex.input}</span></div>
@@ -341,7 +355,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
             </div>
           </div>
 
-          {/* The "Vault" Hint System (Interview Cake Anti-Spoiler UX) */}
+          {/* Anti-Spoiler Vault Hint System */}
           <div className="oled-panel rounded-2xl p-6 border border-sky-500/20 bg-gradient-to-b from-sky-500/5 to-transparent space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
@@ -350,14 +364,14 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">The "Vault" Hint System</h3>
-                  <p className="text-[11px] text-sky-300/80">Interview Cake Anti-Spoiler Pedagogy</p>
+                  <p className="text-[11px] text-sky-300/80">Progressive Anti-Spoiler Pedagogy</p>
                 </div>
               </div>
 
               {currentUnlockedCount > 0 && (
                 <button 
                   onClick={resetVaults}
-                  className="flex items-center space-x-1 text-[11px] text-neutral-500 hover:text-white transition"
+                  className="flex items-center space-x-1 text-[11px] text-neutral-400 hover:text-white transition"
                 >
                   <RotateCcw className="w-3 h-3" />
                   <span>Lock All</span>
@@ -366,7 +380,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
             </div>
 
             <p className="text-xs text-neutral-400 leading-relaxed">
-              Hover over a vault to inspect its meta-clue. Click to shatter the lock with spring-physics.
+              Hover to preview the meta-clue. Click to shatter the lock with spring-physics.
             </p>
 
             {/* 3 Vault Cards */}
@@ -374,6 +388,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
               {selectedProblem.hints.map((hint, idx) => {
                 const isUnlocked = idx < currentUnlockedCount;
                 const isNextToUnlock = idx === currentUnlockedCount;
+                const isSpeakingThisVault = speakingVaultId === hint.id;
 
                 return (
                   <motion.div
@@ -400,9 +415,24 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                         )}
                         <span className="text-xs font-bold text-white">{hint.title}</span>
                       </div>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-neutral-400 font-mono">
-                        Vault {idx + 1}
-                      </span>
+
+                      <div className="flex items-center space-x-2">
+                        {isUnlocked && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleVaultVoice(hint.id, hint.content);
+                            }}
+                            className="p-1 rounded hover:bg-white/10 text-neutral-400 hover:text-white transition"
+                            title="Hear hint spoken aloud"
+                          >
+                            {isSpeakingThisVault ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-neutral-400 font-mono">
+                          Vault {idx + 1}
+                        </span>
+                      </div>
                     </div>
 
                     {isUnlocked ? (
@@ -414,7 +444,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                         {hint.content}
                       </motion.p>
                     ) : (
-                      <div className="text-[11px] text-neutral-500 group-hover:text-sky-300 transition mt-1 italic">
+                      <div className="text-[11px] text-neutral-400 group-hover:text-sky-300 transition mt-1 italic">
                         {hint.metaClue}
                       </div>
                     )}
@@ -426,7 +456,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
 
         </div>
 
-        {/* Right Column: The 3D Holo-Deck Flip Panel (Code Editor on Front, Scrimba on Back) */}
+        {/* Right Column: 3D Holo-Deck Panel (Editor Front, Spatial Solution Back) */}
         <div className="lg:col-span-7 perspective-1000">
           
           <motion.div
@@ -438,9 +468,9 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
             {/* FRONT FACE: Code Editor & Test Suite */}
             <div className={`oled-panel rounded-2xl border border-white/10 flex flex-col backface-hidden ${
               isFlipped ? 'pointer-events-none' : ''
-            } ${testRun.hasRun && testRun.allPassed ? 'glow-emerald border-emerald-500/60' : ''}`}>
+            } ${testRun.hasRun && testRun.outcome?.allPassed ? 'glow-emerald border-emerald-500/60' : ''}`}>
               
-              {/* Editor Top Bar with 3D Flip Trigger */}
+              {/* Editor Top Bar with Raise Hand & 3D Flip Trigger */}
               <div className="bg-neutral-900/90 px-5 py-3 border-b border-white/10 flex items-center justify-between text-xs">
                 <div className="flex items-center space-x-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
@@ -449,7 +479,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                   <span className="ml-2 font-mono text-[11px] text-neutral-400">solution.{language === 'javascript' ? 'js' : 'py'}</span>
                 </div>
 
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2.5">
                   {/* Language switch */}
                   <div className="flex items-center space-x-1 bg-black p-1 rounded-lg border border-white/10">
                     <button
@@ -470,13 +500,28 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                     </button>
                   </div>
 
+                  {/* "Raise Hand" (✋) Clarifying Questions Button */}
+                  <button
+                    onClick={() => setIsRaiseHandOpen(true)}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600/15 text-rose-300 hover:bg-rose-600/25 border border-rose-500/30 transition shadow-sm"
+                    title="Ask the interviewer a clarifying question"
+                  >
+                    <span>✋</span>
+                    <span>Raise Hand</span>
+                    {clarifyingQuestions.length > 0 && (
+                      <span className="w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-bold">
+                        {clarifyingQuestions.length}
+                      </span>
+                    )}
+                  </button>
+
                   {/* 3D Holo-Deck Flip Button */}
                   <button
                     onClick={() => setIsFlipped(true)}
                     className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-pink-500/10 text-pink-300 hover:bg-pink-500/20 border border-pink-500/30 transition shadow-sm"
                   >
                     <Repeat className="w-3.5 h-3.5" />
-                    <span>Holo-Deck Flip (Scrimba)</span>
+                    <span>Holo-Deck Explainer</span>
                   </button>
                 </div>
               </div>
@@ -520,15 +565,15 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                 )}
               </div>
 
-              {/* Real Test Suite Output */}
-              {testRun.hasRun && (
+              {/* Strict Real Test Suite Output */}
+              {testRun.hasRun && testRun.outcome && (
                 <div className="p-4 border-t border-white/10 bg-neutral-950 text-xs font-mono space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      {testRun.allPassed ? (
+                      {testRun.outcome.allPassed ? (
                         <div className="flex items-center space-x-1.5 text-emerald-400 font-bold">
                           <CheckCircle className="w-4 h-4" />
-                          <span>All Test Cases Passed!</span>
+                          <span>All Automated Test Cases Passed!</span>
                         </div>
                       ) : (
                         <div className="flex items-center space-x-1.5 text-rose-400 font-bold">
@@ -540,32 +585,34 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
 
                     <div className="flex items-center space-x-1 text-neutral-400 text-[11px]">
                       <Zap className="w-3 h-3 text-amber-400" />
-                      <span>{testRun.executionTimeMs}ms execution</span>
+                      <span>{testRun.outcome.executionTimeMs}ms execution</span>
                     </div>
                   </div>
 
-                  {testRun.errorMessage ? (
+                  {testRun.outcome.error ? (
                     <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs">
-                      ⚠️ {testRun.errorMessage}
+                      ⚠️ {testRun.outcome.error}
                     </div>
-                  ) : (
+                  ) : null}
+
+                  {testRun.outcome.tests.length > 0 && (
                     <div className="space-y-2">
-                      {testRun.tests.map((t, idx) => (
+                      {testRun.outcome.tests.map((t, idx) => (
                         <div 
                           key={idx} 
-                          className={`p-2.5 rounded-lg border flex items-center justify-between text-[11px] ${
+                          className={`p-2.5 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] ${
                             t.passed 
                               ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200' 
                               : 'bg-rose-950/20 border-rose-500/30 text-rose-200'
                           }`}
                         >
                           <div className="flex items-center space-x-2">
-                            {t.passed ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <XCircle className="w-3.5 h-3.5 text-rose-400" />}
+                            {t.passed ? <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> : <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
                             <span className="font-semibold">{t.title}</span>
                           </div>
-                          <div className="text-neutral-400 space-x-2 font-mono">
+                          <div className="text-neutral-400 space-x-2 font-mono text-[10px]">
                             <span>Expected: <span className="text-white">{t.expected}</span></span>
-                            <span>Got: <span className={t.passed ? 'text-emerald-300' : 'text-rose-300'}>{t.actual}</span></span>
+                            <span>Got: <span className={t.passed ? 'text-emerald-300 font-bold' : 'text-rose-300 font-bold'}>{t.actual}</span></span>
                           </div>
                         </div>
                       ))}
@@ -576,8 +623,8 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
 
               {/* Action Buttons */}
               <div className="bg-neutral-900/90 px-5 py-3.5 border-t border-white/10 flex items-center justify-between">
-                <div className="text-[11px] text-neutral-400">
-                  Target: <span className="text-neutral-200 font-mono">{selectedProblem.timeComplexity}</span>
+                <div className="text-[11px] text-neutral-400 font-mono">
+                  Target: <span className="text-neutral-200">{selectedProblem.timeComplexity}</span>
                 </div>
 
                 <div className="flex items-center space-x-3">
@@ -587,7 +634,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                     className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-white transition border border-white/10 disabled:opacity-50"
                   >
                     <Play className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
-                    <span>Run Tests</span>
+                    <span>{testRun.isRunning ? 'Executing...' : 'Run Tests'}</span>
                   </button>
 
                   <button
@@ -603,7 +650,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
 
             </div>
 
-            {/* BACK FACE: The Scrimba Holo-Deck Player */}
+            {/* BACK FACE: Spatial Solution Player */}
             <div className={`oled-panel rounded-2xl border border-pink-500/30 flex flex-col absolute inset-0 backface-hidden rotate-y-180 bg-black ${
               !isFlipped ? 'pointer-events-none' : ''
             }`}>
@@ -611,7 +658,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
               <div className="bg-neutral-900/95 px-5 py-3 border-b border-white/10 flex items-center justify-between text-xs">
                 <div className="flex items-center space-x-2 text-pink-400 font-bold">
                   <Video className="w-4 h-4" />
-                  <span>Holo-Deck Explainer (Spatial Solution)</span>
+                  <span>Spatial Codecast Explainer</span>
                 </div>
 
                 <button
@@ -623,7 +670,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
                 </button>
               </div>
 
-              {/* Scrimba Interactive Player */}
+              {/* Interactive Player */}
               <div className="p-4 flex-1 overflow-y-auto">
                 <ScrimbaPlayer problem={selectedProblem} />
               </div>
@@ -634,6 +681,15 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
         </div>
 
       </div>
+
+      {/* "Raise Hand" Clarifying Questions Modal */}
+      <RaiseHandModal
+        isOpen={isRaiseHandOpen}
+        onClose={() => setIsRaiseHandOpen(false)}
+        problem={selectedProblem}
+        clarifyingQuestions={clarifyingQuestions}
+        onAddQuestion={(q) => setClarifyingQuestions(prev => [...prev, q])}
+      />
 
     </div>
   );
