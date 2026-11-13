@@ -11,6 +11,7 @@ import {
   Download
 } from 'lucide-react';
 import { ChatMessage, InterviewScorecard } from '../types';
+import { askAiCoach, generateAiScorecard } from '../services/aiService';
 
 interface AiMockRoomProps {
   solvedCount: number;
@@ -44,7 +45,7 @@ What problem or UI pattern are you currently working through? Or would you like 
     'Generate my Interview Readiness Scorecard'
   ];
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || input;
     if (!text.trim()) return;
 
@@ -55,72 +56,52 @@ What problem or UI pattern are you currently working through? Or would you like 
       timestamp: 'Just now'
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
     if (!textToSend) setInput('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      let reply = '';
-
+    try {
       if (text.toLowerCase().includes('scorecard') || text.toLowerCase().includes('readiness')) {
-        reply = `I have compiled your Interview Readiness Report based on your progress across Interview Cake DSA and Mobbin UI challenges! Check out your scorecard on the right panel.`;
-        setScorecard({
-          overallScore: Math.min(95, 70 + (solvedCount * 8) + (completedFlowsCount * 6)),
-          problemSolving: Math.min(98, 75 + (solvedCount * 8)),
-          systemArchitecture: Math.min(94, 68 + (completedFlowsCount * 9)),
-          communication: 90,
-          strengths: [
-            'Recognizes Greedy vs Brute Force optimization patterns early',
-            'Strong understanding of draft vs global state separation in complex modals',
-            'Careful attention to keyboard accessibility and focus trapping'
-          ],
-          improvements: [
-            'Remember to explicitly check for array length < 2 before index access',
-            'Practice articulating time complexity tradeoffs out loud before coding'
-          ],
-          summary: `Strong candidate profile. Demonstrates mastery over both low-level algorithmic efficiency and high-level React UI component design.`
-        });
-      } else if (text.toLowerCase().includes('apple stocks') || text.toLowerCase().includes('o(n)')) {
-        reply = `Great question! The brute force method checks every buy/sell combination, taking O(n²). 
+        const card = await generateAiScorecard(solvedCount, completedFlowsCount);
+        setScorecard(card);
 
-To reach O(n), think like an opportunistic investor: as you walk through the array:
-1. Always remember the **lowest price seen so far** (\`minPrice\`).
-2. At every minute, check: *"If I sold right now having bought at \`minPrice\`, what would my profit be?"*
-3. Update \`maxProfit\` if this profit beats your record.
-
-**Socratic Question:** What should \`maxProfit\` be initialized to if prices continuously fall all day (e.g. [9, 7, 5, 2])?`;
-      } else if (text.toLowerCase().includes('command palette') || text.toLowerCase().includes('linear')) {
-        reply = `For Linear's Command Palette, top edge cases to watch for in FAANG interviews:
-1. **Focus Trap:** When opened, the tab key must cycle only within the modal. Pressing Escape must return focus to the exact button that launched it.
-2. **Virtualization:** What happens when an organization has 5,000 issues? You must virtualize the list (rendering only 15 items in DOM) to prevent lag.
-3. **IME Composition:** If a user searches in Japanese/Chinese, avoid firing search queries mid-keystroke during character composition!`;
-      } else if (text.toLowerCase().includes('draft state') || text.toLowerCase().includes('filter')) {
-        reply = `In Airbnb's filter drawer, using **draft state** is critical:
-If the filter modal directly edited the global application state, every movement of the price slider would trigger re-fetching listing data and re-rendering map markers! 
-
-By keeping a cloned \`draftFilters\` state locally inside the modal, network requests and map calculations are deferred until the user explicitly commits by clicking *"Show stays"*. If they hit cancel, the draft is discarded without touching global state.`;
+        const aiMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: `I have compiled your real-time Interview Readiness Report based on your performance in the Interview Cake DSA Arena and Mobbin UI Design challenges! You can inspect your breakdown on the right scorecard panel.`,
+          timestamp: 'Just now'
+        };
+        setMessages(prev => [...prev, aiMsg]);
       } else {
-        reply = `That's a classic interview discussion point! 
+        // Format history for Gemini
+        const history = newMessages.slice(1, -1).map(m => ({
+          role: (m.sender === 'user' ? 'user' : 'model') as 'user' | 'model',
+          text: m.text
+        }));
 
-In an interview, I recommend structuring your answer with the **P.A.T.H.** framework:
-1. **P**arameters & Constraints (Clarify scale, duplicates, null values).
-2. **A**pproach (Start with the naive O(n²) solution, then propose the optimal O(n) or O(n log n) data structure).
-3. **T**radeoffs (Explain why you chose space complexity over time, or vice-versa).
-4. **H**appy path & Edge test (Walk through a 3-element test case).
+        const reply = await askAiCoach(text, history);
 
-Would you like me to walk through a test case or generate your readiness scorecard?`;
+        const aiMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: reply,
+          timestamp: 'Just now'
+        };
+        setMessages(prev => [...prev, aiMsg]);
       }
-
+    } catch (err) {
+      console.error("AI error:", err);
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: reply,
+        text: "I encountered a minor connection issue, but let's continue! What specific data structure or state management problem are you thinking through?",
         timestamp: 'Just now'
       };
-
       setMessages(prev => [...prev, aiMsg]);
+    } finally {
       setIsTyping(false);
-    }, 900);
+    }
   };
 
   return (
@@ -142,7 +123,12 @@ Would you like me to walk through a test case or generate your readiness scoreca
                   <span>Stackwa Socratic AI Coach</span>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 </h3>
-                <p className="text-[11px] text-slate-400">Trained on Interview Cake Pedagogy & Mobbin Architecture</p>
+                <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <span>Interview Cake Pedagogy & Mobbin Architecture</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                    Gemini 3.8 Flash & Anakin.ai
+                  </span>
+                </p>
               </div>
             </div>
 
