@@ -88,26 +88,29 @@ Instead of checking every pair, we can use a Greedy Approach: loop through the l
         'Calculating maxProfit before updating minPrice (or vice-versa, causing you to sell before buying).'
       ]
     },
-    scrimbaEmbedId: 'c2L4Nku2', // Scrimba interactive explainer
+    scrimbaEmbedId: 'c2L4Nku2',
     hints: [
       {
         id: 1,
         tier: 'Clarifying Questions',
-        title: 'Step 1: Clarify Rules & Edge Cases',
+        title: 'Vault 1: Input Guarantees & Constraints',
+        metaClue: 'Stuck on edge cases when prices only drop?',
         content: `What should happen if the prices keep falling all day (e.g., [9, 7, 4, 1])? Can you return 0 (no trade), or are you forced to buy and sell at the best possible time (even if it's negative profit)? In this problem, we must return the least negative loss!`,
         revealed: false
       },
       {
         id: 2,
         tier: 'Data Structure Clue',
-        title: 'Step 2: Can we do it in a single pass?',
+        title: 'Vault 2: The Greedy Single-Pass Paradigm',
+        metaClue: 'Want to optimize from O(n²) to O(n)?',
         content: `A brute force O(n²) tests all pairs. But as you walk through the array from left to right at index i, what is the best possible price to have bought at? It's simply the minimum price seen anywhere from index 0 to i-1! Can we track that in a single variable?`,
         revealed: false
       },
       {
         id: 3,
         tier: 'Edge Case & Complexity',
-        title: 'Step 3: What do you initialize maxProfit to?',
+        title: 'Vault 3: Subsumed Losses & Initialization',
+        metaClue: 'Watch out for maxProfit initialization traps!',
         content: `Be careful! If all prices are going down, maxProfit will be negative. If you initialize maxProfit to 0, your function will return 0 instead of the real maximum profit (like -2). Initialize maxProfit to stockPrices[1] - stockPrices[0] and minPrice to stockPrices[0]!`,
         revealed: false
       }
@@ -164,20 +167,16 @@ Your function should return:
     },
     solutionCode: {
       javascript: `function mergeRanges(meetings) {
-  // Create a deep copy and sort by startTime
   const sortedMeetings = [...meetings].sort((a, b) => a.startTime - b.startTime);
-
   const mergedMeetings = [sortedMeetings[0]];
 
   for (let i = 1; i < sortedMeetings.length; i++) {
     const currentMeeting = sortedMeetings[i];
     const lastMergedMeeting = mergedMeetings[mergedMeetings.length - 1];
 
-    // If current meeting overlaps with last merged, merge them
     if (currentMeeting.startTime <= lastMergedMeeting.endTime) {
       lastMergedMeeting.endTime = Math.max(lastMergedMeeting.endTime, currentMeeting.endTime);
     } else {
-      // Add as separate distinct meeting
       mergedMeetings.push(currentMeeting);
     }
   }
@@ -185,7 +184,6 @@ Your function should return:
   return mergedMeetings;
 }`,
       python: `def merge_ranges(meetings):
-    # Sort meetings by start_time
     sorted_meetings = sorted(meetings, key=lambda x: x['start_time'])
     merged = [sorted_meetings[0]]
 
@@ -214,22 +212,25 @@ Once sorted, any meeting that could possibly overlap with our current meeting mu
       {
         id: 1,
         tier: 'Clarifying Questions',
-        title: 'Step 1: Order of Meetings',
-        content: `What happens if the meetings aren't in order? What if a meeting later in the array starts before an earlier meeting? Sorting first simplifies this problem drastically!`,
+        title: 'Vault 1: Unordered Interval Sequencing',
+        metaClue: 'What if meetings are out of chronological order?',
+        content: `What happens if the meetings aren't in order? What if a meeting later in the array starts before an earlier meeting? Sorting by startTime first simplifies this problem drastically!`,
         revealed: false
       },
       {
         id: 2,
         tier: 'Data Structure Clue',
-        title: 'Step 2: Sorting Strategy',
+        title: 'Vault 2: Overlap Boundary Condition',
+        metaClue: 'How to test if two intervals touch or overlap?',
         content: `If we sort by startTime, how can we check if meeting B overlaps with meeting A? If B.startTime <= A.endTime, they overlap! How do you compute the new endTime? Use Math.max(A.endTime, B.endTime).`,
         revealed: false
       },
       {
         id: 3,
         tier: 'Edge Case & Complexity',
-        title: 'Step 3: Subsumed Meetings',
-        content: `Notice that one meeting could be entirely inside another (e.g., [1, 8] and [2, 5]). Make sure you don't overwrite endTime with 5; always keep the max endTime!`,
+        title: 'Vault 3: Subsumed & Contained Meetings',
+        metaClue: 'What if meeting B is completely inside meeting A?',
+        content: `Notice that one meeting could be entirely inside another (e.g., [1, 8] and [2, 5]). Make sure you don't overwrite endTime with 5; always keep Math.max(last.endTime, current.endTime)!`,
         revealed: false
       }
     ]
@@ -274,7 +275,6 @@ Assume users won't watch the same movie twice.`,
     },
     solutionCode: {
       javascript: `function canTwoMoviesFillFlight(flightLength, movieLengths) {
-  // Movie lengths we've seen so far
   const movieLengthsSeen = new Set();
 
   for (let i = 0; i < movieLengths.length; i++) {
@@ -288,7 +288,6 @@ Assume users won't watch the same movie twice.`,
     movieLengthsSeen.add(currentMovieLength);
   }
 
-  // We've finished looking through all movies without finding a pair
   return false;
 }`,
       python: `def can_two_movies_fill_flight(flight_length, movie_lengths):
@@ -317,21 +316,24 @@ Instead, by using a Hash Set, we can look up the complementary movie (flightLeng
       {
         id: 1,
         tier: 'Clarifying Questions',
-        title: 'Step 1: Can we watch the same movie twice?',
+        title: 'Vault 1: Identical Movie Index Protection',
+        metaClue: 'Can you watch the exact same movie twice?',
         content: `If flightLength is 120 and there is a 60-minute movie, can we watch that same movie twice? No! So we must ensure the pair consists of two distinct indices.`,
         revealed: false
       },
       {
         id: 2,
         tier: 'Data Structure Clue',
-        title: 'Step 2: Instant Complement Lookup',
+        title: 'Vault 2: Instant O(1) Hash Complement',
+        metaClue: 'What data structure gives O(1) lookup?',
         content: `For each movie length L, what is the exact second movie length needed? Target is (flightLength - L). What data structure gives us O(1) instant lookup to see if we've already seen that complement? A Hash Set!`,
         revealed: false
       },
       {
         id: 3,
         tier: 'Edge Case & Complexity',
-        title: 'Step 3: Avoid Self-Matching',
+        title: 'Vault 3: The Insertion Order Trap',
+        metaClue: 'Check complement BEFORE or AFTER set.add()?',
         content: `Check if the complement is in your set BEFORE adding the current movie to the set. That way, a 60-minute movie won't match with itself!`,
         revealed: false
       }

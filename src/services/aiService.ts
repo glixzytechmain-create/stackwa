@@ -100,10 +100,14 @@ Return ONLY valid JSON matching this schema:
 
   // Fallback
   return {
+    candidateName: 'Candidate',
+    targetCompany: 'Tech Company',
+    role: 'Software Engineer',
     overallScore: Math.min(96, 72 + (solvedCount * 8) + (completedFlowsCount * 6)),
     problemSolving: Math.min(98, 75 + (solvedCount * 8)),
     systemArchitecture: Math.min(94, 68 + (completedFlowsCount * 9)),
     communication: 92,
+    edgeCaseAwareness: Math.min(95, 70 + (completedFlowsCount * 8)),
     strengths: [
       'Recognizes single-pass Greedy optimizations over O(n²) loops',
       'Understands draft vs global state isolation in complex modals',
@@ -113,6 +117,8 @@ Return ONLY valid JSON matching this schema:
       'Explicitly guard against empty or single-element inputs',
       'Articulate Big-O trade-offs aloud before writing code'
     ],
-    summary: 'Candidate shows strong dual competency in algorithmic data structures and modern component state architecture.'
+    summary: 'Candidate shows strong dual competency in algorithmic data structures and modern component state architecture.',
+    verificationHash: `STK-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+    timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   };
 }

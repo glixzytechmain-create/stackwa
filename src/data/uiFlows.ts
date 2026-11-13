@@ -18,15 +18,23 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
     edgeCases: [
       {
         scenario: 'User types gibberish with no matches',
-        expectedBehavior: 'Render an empty-state illustration with a quick button to "Create issue with this title".'
+        expectedBehavior: 'Render an empty-state illustration with a quick button to "Create issue with this title".',
+        category: 'empty'
       },
       {
         scenario: 'Command list exceeds viewport height',
-        expectedBehavior: 'Implement virtualized scrolling (e.g. react-window) so 5,000 workspace items render at 60fps without DOM lag.'
+        expectedBehavior: 'Implement virtualized scrolling (e.g. react-window) so 5,000 workspace items render at 60fps without DOM lag.',
+        category: 'loading'
       },
       {
         scenario: 'Network goes offline while searching server-side issues',
-        expectedBehavior: 'Fallback instantly to cached local commands and display an offline badge next to server results.'
+        expectedBehavior: 'Fallback instantly to cached local commands and display an offline badge next to server results.',
+        category: 'offline'
+      },
+      {
+        scenario: 'Malformed search query or server timeout',
+        expectedBehavior: 'Gracefully catch error inside Error Boundary and show non-blocking retry prompt.',
+        category: 'error'
       }
     ],
     recommendedComponentTree: [
@@ -36,7 +44,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'container',
         description: 'Handles backdrop blur, focus trapping, and keyboard shortcuts listeners.',
         stateUsed: ['isOpen', 'activeSelectedIndex'],
-        props: ['onClose', 'commandsList']
+        props: ['onClose', 'commandsList'],
+        xRayBox: { top: 12, left: 10, width: 80, height: 76 }
       },
       {
         id: 'palette-input',
@@ -44,7 +53,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'molecule',
         description: 'Auto-focused input with debounced query change and clear button.',
         stateUsed: ['searchQuery'],
-        props: ['value', 'onChange', 'onKeyDown']
+        props: ['value', 'onChange', 'onKeyDown'],
+        xRayBox: { top: 14, left: 14, width: 72, height: 16 }
       },
       {
         id: 'palette-list',
@@ -52,7 +62,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'organism',
         description: 'Renders categorized commands with accessibility aria-selected flags.',
         stateUsed: ['highlightedIndex'],
-        props: ['groupedItems', 'onSelect']
+        props: ['groupedItems', 'onSelect'],
+        xRayBox: { top: 34, left: 14, width: 72, height: 48 }
       },
       {
         id: 'palette-item',
@@ -60,7 +71,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'atom',
         description: 'Individual command row displaying icon, title, description, and keyboard shortcut badge.',
         stateUsed: [],
-        props: ['icon', 'label', 'shortcut', 'isSelected']
+        props: ['icon', 'label', 'shortcut', 'isSelected'],
+        xRayBox: { top: 44, left: 16, width: 68, height: 16 }
       }
     ],
     stateArchitectureGuide: {
@@ -119,15 +131,23 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
     edgeCases: [
       {
         scenario: 'User closes modal via backdrop click without clicking "Show stays"',
-        expectedBehavior: 'Discard unapplied draft filter changes and revert to the previously applied state.'
+        expectedBehavior: 'Discard unapplied draft filter changes and revert to the previously applied state.',
+        category: 'empty'
       },
       {
         scenario: 'User drags minPrice slider past maxPrice slider',
-        expectedBehavior: 'Enforce minimum gap between thumbs or push the adjacent thumb dynamically.'
+        expectedBehavior: 'Enforce minimum gap between thumbs or push the adjacent thumb dynamically.',
+        category: 'error'
       },
       {
         scenario: 'Selected combination returns 0 available homes',
-        expectedBehavior: 'Update footer button to "No stays found" and highlight the most restrictive filter (e.g. "Try widening price range").'
+        expectedBehavior: 'Update footer button to "No stays found" and highlight the most restrictive filter.',
+        category: 'empty'
+      },
+      {
+        scenario: 'Slow 3G network while updating matching preview count',
+        expectedBehavior: 'Display an inline shimmering skeleton inside the "Show [N] stays" button rather than blocking input.',
+        category: 'loading'
       }
     ],
     recommendedComponentTree: [
@@ -137,7 +157,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'container',
         description: 'Controls drawer transition, body scroll lock, and draft state lifecycle.',
         stateUsed: ['isOpen', 'draftFilters'],
-        props: ['initialFilters', 'onApply', 'onClose']
+        props: ['initialFilters', 'onApply', 'onClose'],
+        xRayBox: { top: 8, left: 10, width: 80, height: 84 }
       },
       {
         id: 'price-histogram',
@@ -145,7 +166,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'organism',
         description: 'Interactive SVG bar chart displaying distribution of prices with dual slider handles.',
         stateUsed: ['sliderMin', 'sliderMax'],
-        props: ['histogramData', 'currency', 'onChange']
+        props: ['histogramData', 'currency', 'onChange'],
+        xRayBox: { top: 24, left: 14, width: 72, height: 28 }
       },
       {
         id: 'amenities-grid',
@@ -153,7 +175,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'molecule',
         description: 'Multi-select pill or checkbox grid with icons for WiFi, Pool, Pet-friendly, etc.',
         stateUsed: ['selectedAmenityIds'],
-        props: ['availableAmenities', 'onToggle']
+        props: ['availableAmenities', 'onToggle'],
+        xRayBox: { top: 56, left: 14, width: 72, height: 20 }
       },
       {
         id: 'filter-footer',
@@ -161,7 +184,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'molecule',
         description: 'Sticky bottom bar with "Clear all" text button and dynamic "Show [N] stays" CTA button.',
         stateUsed: ['isMatchingCountLoading'],
-        props: ['matchingCount', 'onClear', 'onApply']
+        props: ['matchingCount', 'onClear', 'onApply'],
+        xRayBox: { top: 78, left: 14, width: 72, height: 12 }
       }
     ],
     stateArchitectureGuide: {
@@ -208,11 +232,23 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
     edgeCases: [
       {
         scenario: 'User drags current playing song into the upcoming queue',
-        expectedBehavior: 'Disallow reordering the active playing track; only upcoming items should be draggable.'
+        expectedBehavior: 'Disallow reordering the active playing track; only upcoming items should be draggable.',
+        category: 'error'
       },
       {
         scenario: 'User closes tab or refreshes page mid-song',
-        expectedBehavior: 'Persist playback timestamp and queue state in LocalStorage/IndexedDB to resume seamlessly.'
+        expectedBehavior: 'Persist playback timestamp and queue state in LocalStorage/IndexedDB to resume seamlessly.',
+        category: 'offline'
+      },
+      {
+        scenario: 'Audio stream buffer underrun due to poor connectivity',
+        expectedBehavior: 'Show subtle spinner on play button without resetting track position.',
+        category: 'loading'
+      },
+      {
+        scenario: 'Upcoming queue runs out of songs',
+        expectedBehavior: 'Seamlessly transition to autoplay algorithmic recommendations.',
+        category: 'empty'
       }
     ],
     recommendedComponentTree: [
@@ -222,7 +258,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'container',
         description: 'Houses the HTML5 Audio singleton, mini-player bar, and expands into the queue modal.',
         stateUsed: ['isPlaying', 'currentTime', 'isQueueOpen'],
-        props: ['children']
+        props: ['children'],
+        xRayBox: { top: 12, left: 10, width: 80, height: 40 }
       },
       {
         id: 'queue-sheet',
@@ -230,7 +267,8 @@ export const UI_CHALLENGES: UiDesignChallenge[] = [
         type: 'organism',
         description: 'Draggable bottom sheet rendering categorized track sections.',
         stateUsed: ['queueItems'],
-        props: ['activeTrack', 'onReorder', 'onRemoveTrack']
+        props: ['activeTrack', 'onReorder', 'onRemoveTrack'],
+        xRayBox: { top: 56, left: 10, width: 80, height: 38 }
       }
     ],
     stateArchitectureGuide: {

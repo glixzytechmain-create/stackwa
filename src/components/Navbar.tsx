@@ -8,9 +8,11 @@ import {
   User as UserIcon, 
   LogOut, 
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Calendar,
+  Target
 } from 'lucide-react';
-import { TabType } from '../types';
+import { TabType, UserInterviewProfile } from '../types';
 import { loginAsGuest, loginWithGoogle, logoutUser } from '../firebase';
 import { type User } from 'firebase/auth';
 
@@ -19,150 +21,186 @@ interface NavbarProps {
   setActiveTab: (tab: TabType) => void;
   user: User | null;
   streakDays: number;
+  profile: UserInterviewProfile | null;
+  onOpenOnboarding: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
   activeTab, 
   setActiveTab, 
   user, 
-  streakDays 
+  streakDays,
+  profile,
+  onOpenOnboarding
 }) => {
   return (
-    <header className="sticky top-0 z-50 glass-panel border-b border-slate-800">
+    <header className="sticky top-0 z-50 oled-panel border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           
-          {/* Logo & Brand */}
+          {/* Logo & Brand (Deep Red Accent & Crisp White) */}
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('dsa')}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-              <Code2 className="w-6 h-6 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-rose-600 flex items-center justify-center shadow-lg shadow-rose-600/30">
+              <Code2 className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-xl tracking-tight text-white">Stackwa</span>
-                <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                  IceHacks 2026
+                <span className="font-extrabold text-lg tracking-tight text-white">Stackwa</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                  IceHacks
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">DSA & UI System Design Studio</p>
+              <p className="text-[10px] text-neutral-400 font-mono">Focus & Flow Studio</p>
             </div>
           </div>
 
           {/* Navigation Tabs */}
-          <nav className="hidden md:flex items-center space-x-1 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800/80">
+          <nav className="hidden md:flex items-center space-x-1 bg-neutral-900/60 p-1.5 rounded-2xl border border-white/5">
             <button
               onClick={() => setActiveTab('dsa')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'dsa'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-white text-black shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Code2 className="w-4 h-4" />
-              <span>DSA Arena</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/50">
-                Interview Cake
+              <Code2 className="w-3.5 h-3.5" />
+              <span>DSA Vaults</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 font-mono">
+                Cake
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('ui-design')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'ui-design'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-white text-black shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Layers className="w-4 h-4" />
-              <span>UI System Design</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-700/50">
+              <Layers className="w-3.5 h-3.5" />
+              <span>Mobbin X-Ray</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 font-mono">
                 Mobbin
               </span>
             </button>
 
             <button
-              onClick={() => setActiveTab('mock-interview')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                activeTab === 'mock-interview'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              onClick={() => setActiveTab('roadmap')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'roadmap'
+                  ? 'bg-white text-black shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Bot className="w-4 h-4" />
-              <span>AI Mock Room</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50 flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5" /> AI Coach
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Daywise Roadmap</span>
+              {profile && (
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 font-mono">
+                  {profile.targetCompany}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('mock-interview')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'mock-interview'
+                  ? 'bg-white text-black shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>AI Coach</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 font-mono flex items-center gap-0.5">
+                <Sparkles className="w-2.5 h-2.5" /> Flash
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'dashboard'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  ? 'bg-white text-black shadow-md'
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <BarChart3 className="w-4 h-4" />
+              <BarChart3 className="w-3.5 h-3.5" />
               <span>Readiness</span>
             </button>
           </nav>
 
-          {/* Right Section: Streak & Firebase Auth */}
+          {/* Right Section: Company Target, Streak & User Auth */}
           <div className="flex items-center space-x-3">
-            {/* Streak Badge */}
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
-              <Flame className="w-4 h-4 text-amber-400 fill-amber-400" />
-              <span>{streakDays} Day Streak</span>
+            
+            {/* Target Goal Pill (Clickable to open Onboarding Setup) */}
+            <button
+              onClick={onOpenOnboarding}
+              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 text-xs font-semibold transition"
+              title="Change target company or interview date"
+            >
+              <Target className="w-3.5 h-3.5 text-rose-400" />
+              <span>{profile?.targetCompany || 'Set Target Goal'}</span>
+              <span className="text-[10px] text-neutral-500 font-mono">
+                {profile?.daysRemaining ? `(${profile.daysRemaining}d)` : ''}
+              </span>
+            </button>
+
+            {/* Streak Counter */}
+            <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-bold font-mono">
+              <Flame className="w-3.5 h-3.5 fill-rose-400" />
+              <span>{streakDays}d Streak</span>
             </div>
 
-            {/* User Profile / Auth Button */}
+            {/* User Profile / Auth */}
             {user ? (
               <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-xs text-slate-200">
-                  <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-white uppercase">
+                <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-neutral-900 border border-white/10 text-xs text-neutral-200">
+                  <div className="w-5 h-5 rounded-full bg-rose-600 flex items-center justify-center text-[10px] font-bold text-white uppercase">
                     {user.isAnonymous ? 'G' : (user.displayName?.[0] || user.email?.[0] || 'U')}
                   </div>
-                  <span className="max-w-[100px] truncate">
-                    {user.isAnonymous ? 'Guest User' : (user.displayName || user.email?.split('@')[0])}
+                  <span className="max-w-[85px] truncate font-medium">
+                    {user.isAnonymous ? 'Guest' : (user.displayName || user.email?.split('@')[0])}
                   </span>
                 </div>
                 <button
                   onClick={() => logoutUser()}
                   title="Sign out"
-                  className="p-2 rounded-lg bg-slate-800/60 hover:bg-red-500/10 hover:text-red-400 text-slate-400 transition"
+                  className="p-2 rounded-xl bg-neutral-900 hover:bg-rose-500/10 hover:text-rose-400 text-neutral-500 transition border border-white/5"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : (
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => loginAsGuest()}
-                  className="px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 rounded-lg border border-slate-700 transition"
+                  className="px-3 py-1.5 text-xs font-medium text-neutral-300 hover:text-white bg-neutral-900 rounded-xl border border-white/10 transition"
                 >
-                  Guest Login
+                  Guest
                 </button>
                 <button
                   onClick={() => loginWithGoogle()}
-                  className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-sm transition flex items-center space-x-1.5"
+                  className="px-3 py-1.5 text-xs font-bold text-black bg-white hover:bg-neutral-200 rounded-xl shadow-sm transition flex items-center space-x-1.5"
                 >
-                  <UserIcon className="w-3.5 h-3.5" />
+                  <UserIcon className="w-3 h-3" />
                   <span>Sign In</span>
                 </button>
               </div>
             )}
 
-            {/* DeployXA Live Badge */}
+            {/* DeployXA Live link */}
             <a 
               href="https://deployxa.com" 
               target="_blank" 
               rel="noreferrer"
-              className="hidden lg:flex items-center space-x-1 text-[11px] text-slate-400 hover:text-slate-200 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 transition"
+              className="hidden xl:flex items-center space-x-1 text-[11px] text-neutral-400 hover:text-white px-2.5 py-1 rounded-lg bg-neutral-900 border border-white/5 transition"
             >
               <span>DeployXA</span>
-              <ExternalLink className="w-3 h-3 text-slate-500" />
+              <ExternalLink className="w-3 h-3 text-neutral-500" />
             </a>
+
           </div>
 
         </div>
