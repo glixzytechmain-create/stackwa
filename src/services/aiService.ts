@@ -15,34 +15,37 @@ export async function conductOnboardingTurn(
   candidateMessage: string
 ): Promise<{ replyText: string; isComplete: boolean; extractedProfile?: Partial<UserInterviewProfile> }> {
   try {
-    const prompt = `You are Stackwa's Technical Interview Lead onboarding a new engineering candidate.
-Your goal is to have an organic, concise, authentic technical calibration conversation.
-Learn about:
-1. What company or domain they are targeting (can be any company or startup).
-2. What role and level (e.g. Frontend, Fullstack, Systems, Distributed, Staff, Junior, etc.).
-3. When their interview is (exact date or timeframe like "next Tuesday", "in 12 days", "3 weeks").
-4. What rounds are scheduled and what topics feel most intimidating right now (e.g. concurrency, interval merging, dynamic programming, UI state machines).
+    const candidateTurns = history.filter(h => h.sender === 'candidate').length;
+    const prompt = `You are Stackwa's Technical Interview Lead onboarding an engineer to calibrate their tailored interview track.
+Your goal is to have a genuine, multi-turn technical calibration dialogue. Do NOT rush to create a card in 1 turn!
 
+You need to thoroughly explore 3 distinct pillars before concluding:
+1. Target Company & Specific Role (e.g., Backend Systems at NVIDIA, Distributed Infra at Stripe, Frontend at Linear).
+2. Diagnostic of Current Preparation & Weak Spots (e.g. what data structures or architectural patterns feel shaky? Concurrency, sliding window, graph DAGs, UI state machines?).
+3. Scheduled Rounds & Timeline (when is the screen? e.g. "in 3 weeks", exact date, or flexible; and daily rehearsal bandwidth).
+
+Turn count so far: ${candidateTurns + 1} candidate messages.
 Conversation history:
 ${history.map(h => `${h.sender === 'interviewer' ? 'Interviewer' : 'Candidate'}: ${h.text}`).join('\n')}
 Candidate: ${candidateMessage}
 
-Respond as the Interviewer. 
-IMPORTANT: Recognize that NOT everyone has an upcoming interview scheduled. Some users are visitors, students, or engineers who are simply visiting or exploring to practice general problem-solving.
-- If the user says they are just visiting, exploring, or don't have an interview scheduled: acknowledge that warmly, set isComplete=true, set targetCompany="General Practice", role="Fullstack Engineer", daysRemaining=30, and focusAreas=["Algorithmic Invariants", "System Architecture", "Defensive Edge Cases"].
-- If the user specifies an interview target, summarize what you learned and conclude the onboarding with isComplete=true.
+CRITICAL RULES:
+- If the user says they are just visiting, a student, or exploring without an upcoming interview: acknowledge warmly, set isComplete=true, targetCompany="General Engineering Practice", role="Full-Stack / Systems Engineer", daysRemaining=30, isGeneralPractice=true, focusAreas=["Sliding Window & Monotonic Bounds", "Transactional State Machines", "LRU O(1) Cache Eviction"].
+- If the candidate turns count < 2 (this is the 1st or 2nd reply): DO NOT finalize! Ask thoughtful diagnostic follow-ups about their preparation, weak spots, or upcoming round formats. Return isComplete=false.
+- If you have explored the target role, preparation weak spots, and timeline (typically 3+ exchanges), OR if the candidate explicitly asks to "create card" / "done" / "let's go": summarize their custom preparation blueprint enthusiastically and set isComplete=true.
 
 Return ONLY valid JSON matching this schema:
 {
-  "replyText": string,
-  "isComplete": boolean (true if you have identified target company/role/timeline OR if the user is a visitor/general learner),
+  "replyText": string (your conversational interviewer response in crisp, peer-to-peer technical tone),
+  "isComplete": boolean (set true ONLY when all required info has been gathered across multi-turn dialogue, or if user is a visitor),
   "extractedProfile": {
     "targetCompany": string,
     "role": string,
     "seniority": "Intern" | "Junior" | "Mid-Level" | "Senior",
     "daysRemaining": number,
     "interviewDate": string (YYYY-MM-DD),
-    "focusAreas": [string, string, string]
+    "focusAreas": [string, string, string],
+    "isGeneralPractice": boolean
   }
 }`;
 

@@ -102,6 +102,22 @@ const DEFAULT_ROADMAP: DayPlan[] = [
   }
 ];
 
+const DEFAULT_GOALS: InterviewTrack[] = [
+  {
+    id: 'goal-general',
+    company: 'General Engineering Practice',
+    role: 'Algorithms & Spatial Systems',
+    dateLabel: 'Daily Practice',
+    intensity: '30m',
+    difficulty: 'Hard',
+    focusTopics: ['Sliding Window Limiter', 'Idempotent Ledger', 'LRU O(1) Eviction'],
+    roundsCount: 4,
+    completedRounds: 1,
+    readinessScore: 78,
+    accentColor: 'rose'
+  }
+];
+
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'landing' | 'studio'>('landing');
   const [activeTab, setActiveTab] = useState<TabType>('dsa');
@@ -110,8 +126,9 @@ export const App: React.FC = () => {
   const [completedFlowIds, setCompletedFlowIds] = useState<string[]>(['linear-command-palette']);
   const [streakDays, setStreakDays] = useState<number>(3);
 
-  // Personalized Interview Profile & Daywise Roadmap
+  // Personalized Interview Profile, Goals, & Daywise Roadmap
   const [profile, setProfile] = useState<UserInterviewProfile>(DEFAULT_VISITOR_PROFILE);
+  const [goals, setGoals] = useState<InterviewTrack[]>(DEFAULT_GOALS);
   const [activeTrack, setActiveTrack] = useState<InterviewTrack | null>(null);
   const [roadmap, setRoadmap] = useState<DayPlan[]>(DEFAULT_ROADMAP);
   const [customProblems, setCustomProblems] = useState<DsaProblem[]>([]);
@@ -135,6 +152,17 @@ export const App: React.FC = () => {
       }
     });
 
+    // Load saved goals from local storage
+    const savedGoals = localStorage.getItem('stackwa_interview_goals');
+    if (savedGoals) {
+      try {
+        const parsed = JSON.parse(savedGoals);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setGoals(parsed);
+        }
+      } catch {}
+    }
+
     // Load saved profile / roadmap from local storage
     const savedProfile = localStorage.getItem('stackwa_interview_profile');
     if (savedProfile) {
@@ -146,6 +174,29 @@ export const App: React.FC = () => {
           setProfile(DEFAULT_VISITOR_PROFILE);
         } else {
           setProfile(parsed);
+          // If profile has a user-set company and goals don't have it yet, add it
+          if (!parsed.isGeneralPractice && parsed.targetCompany && parsed.userSet) {
+            setGoals(prev => {
+              if (prev.some(g => g.company.toLowerCase() === parsed.targetCompany.toLowerCase())) return prev;
+              return [
+                {
+                  id: `goal-${parsed.targetCompany.toLowerCase()}`,
+                  company: parsed.targetCompany,
+                  role: parsed.role || 'Software Engineer',
+                  dateLabel: parsed.interviewDate ? new Date(parsed.interviewDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Next Round',
+                  daysRemaining: parsed.daysRemaining,
+                  intensity: '45m',
+                  difficulty: 'FAANG-Caliber',
+                  focusTopics: parsed.focusAreas && parsed.focusAreas.length > 0 ? parsed.focusAreas : ['Sliding Window', 'State Machines', 'Edge Cases'],
+                  roundsCount: 4,
+                  completedRounds: 0,
+                  readinessScore: 82,
+                  accentColor: 'rose'
+                },
+                ...prev
+              ];
+            });
+          }
         }
       } catch {
         setProfile(DEFAULT_VISITOR_PROFILE);
@@ -185,6 +236,32 @@ export const App: React.FC = () => {
     if (customChallenge) {
       setCustomProblems(prev => [customChallenge, ...prev.filter(p => p.id !== customChallenge.id)]);
     }
+
+    // Add as independent dedicated goal track
+    if (!newProfile.isGeneralPractice && newProfile.targetCompany) {
+      const newTrack: InterviewTrack = {
+        id: `goal-${Date.now()}`,
+        company: newProfile.targetCompany,
+        role: newProfile.role || 'Software Engineer',
+        dateLabel: newProfile.interviewDate ? new Date(newProfile.interviewDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Next Round',
+        daysRemaining: newProfile.daysRemaining,
+        intensity: '45m',
+        difficulty: 'FAANG-Caliber',
+        focusTopics: newProfile.focusAreas && newProfile.focusAreas.length > 0 ? newProfile.focusAreas : ['Sliding Window', 'State Machines', 'Edge Cases'],
+        roundsCount: 4,
+        completedRounds: 0,
+        readinessScore: 82,
+        accentColor: 'rose'
+      };
+
+      setGoals(prev => {
+        const withoutSame = prev.filter(g => g.company.toLowerCase() !== newTrack.company.toLowerCase());
+        const updated = [newTrack, ...withoutSame];
+        localStorage.setItem('stackwa_interview_goals', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
     localStorage.setItem('stackwa_interview_profile', JSON.stringify(profileToSave));
     localStorage.setItem('stackwa_daywise_roadmap', JSON.stringify(newRoadmap));
     setCurrentView('studio');
@@ -266,27 +343,23 @@ export const App: React.FC = () => {
                     />
                   ) : (
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-                      {/* Recommendation Top Banner */}
+                      {/* Dynamic Multi-Goal Workspace Top Banner */}
                       <div className="relative rounded-3xl p-6 md:p-8 bg-gradient-to-r from-neutral-900/90 via-rose-950/20 to-neutral-900/90 border border-white/10 overflow-hidden shadow-2xl backdrop-blur-xl">
                         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                           <div className="space-y-2">
                             <div className="flex items-center space-x-2">
                               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                                {profile?.isGeneralPractice ? 'RECOMMENDED FOCUS' : `${profile?.targetCompany || 'TARGET'} ROADMAP`}
+                                MULTI-GOAL ARCHITECTURE
                               </span>
-                              {profile?.daysRemaining ? (
-                                <span className="text-xs text-neutral-400 font-mono">
-                                  {profile.daysRemaining}d to Rehearsal
-                                </span>
-                              ) : null}
+                              <span className="text-xs text-neutral-400 font-mono">
+                                {goals.length} Active {goals.length === 1 ? 'Goal' : 'Goals'} Configured
+                              </span>
                             </div>
                             <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                               What will you hone today?
                             </h2>
-                            <p className="text-neutral-400 text-sm max-w-2xl">
-                              {profile?.isGeneralPractice 
-                                ? 'Production-grade engineering tracks with interactive UI sandboxes, Architecture MCQs, and real Scrimba codecasts.'
-                                : `AI curated drill focusing on ${profile?.focusAreas?.[0] || 'Core Algorithmic Invariants'} to prepare for ${profile?.targetCompany || 'your next interview'}.`}
+                            <p className="text-neutral-400 text-sm max-w-2xl leading-relaxed">
+                              Each goal card represents an isolated, company-scoped interview screen. Enter any card to rehearse its dedicated DSA invariants, Mobbin UI flows, and Socratic defense.
                             </p>
                           </div>
 
@@ -296,7 +369,7 @@ export const App: React.FC = () => {
                               className="flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-semibold text-xs transition"
                             >
                               <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                              <span>{profile?.isGeneralPractice ? 'Calibrate Target Company' : 'Recalibrate Track'}</span>
+                              <span>+ Calibrate New Goal</span>
                             </button>
                           </div>
                         </div>
@@ -307,52 +380,22 @@ export const App: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2.5">
                             <Building2 className="w-4 h-4 text-rose-500" />
-                            <h3 className="text-base font-bold text-white tracking-tight">Interview Tracks</h3>
+                            <h3 className="text-base font-bold text-white tracking-tight">Interview Goals & Tracks</h3>
                           </div>
-                          <span className="text-xs text-neutral-400 font-mono">3D Flippable Cards • Select to Enter Scoped Screen</span>
+                          <span className="text-xs text-neutral-400 font-mono">3D Flippable Cards • Select to Enter Dedicated Screen</span>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {/* 1. Tailored Target Track Card if not visitor mode */}
-                          {!profile?.isGeneralPractice && profile?.targetCompany && (
+                          {/* Render all independent goal cards */}
+                          {goals.map((track) => (
                             <InterviewCard 
-                              track={{
-                                id: 'calibrated-target',
-                                company: profile.targetCompany,
-                                role: profile.role || 'Full-Stack / Systems Engineer',
-                                dateLabel: profile.interviewDate ? new Date(profile.interviewDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Next Round',
-                                daysRemaining: profile.daysRemaining,
-                                intensity: '45m',
-                                difficulty: 'FAANG-Caliber',
-                                focusTopics: profile.focusAreas && profile.focusAreas.length > 0 ? profile.focusAreas : ['Sliding Window', 'State Machines', 'Edge Cases'],
-                                roundsCount: 3,
-                                completedRounds: 0,
-                                readinessScore: 82,
-                                accentColor: 'rose'
-                              }}
+                              key={track.id}
+                              track={track}
                               onEnter={(t) => setActiveTrack(t)}
                             />
-                          )}
+                          ))}
 
-                          {/* 2. General Engineering Practice Vault Card */}
-                          <InterviewCard 
-                            track={{
-                              id: 'general-vault',
-                              company: 'General Engineering Practice',
-                              role: 'Algorithms & Spatial Systems',
-                              dateLabel: 'Daily Practice',
-                              intensity: '30m',
-                              difficulty: 'Hard',
-                              focusTopics: ['Sliding Window Limiter', 'Idempotent Ledger', 'LRU O(1) Eviction'],
-                              roundsCount: 3,
-                              completedRounds: 1,
-                              readinessScore: 78,
-                              accentColor: 'rose'
-                            }}
-                            onEnter={(t) => setActiveTrack(t)}
-                          />
-
-                          {/* 3. New Target Calibration Action Card */}
+                          {/* New Target Calibration Action Card */}
                           <div 
                             onClick={() => setIsOnboardingOpen(true)}
                             className="h-[340px] rounded-3xl p-6 bg-neutral-950/60 border border-dashed border-white/15 hover:border-rose-500/50 flex flex-col items-center justify-center text-center cursor-pointer group transition duration-300"
@@ -360,9 +403,9 @@ export const App: React.FC = () => {
                             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4 group-hover:scale-110 transition duration-300">
                               <Sparkles className="w-6 h-6" />
                             </div>
-                            <h4 className="font-bold text-white text-base">Calibrate Target Screen</h4>
+                            <h4 className="font-bold text-white text-base">Calibrate Another Screen</h4>
                             <p className="text-xs text-neutral-400 mt-2 max-w-xs">
-                              Have an upcoming interview? Talk with our Socratic AI Lead to build an adaptive track tailored to your dream company.
+                              Have another interview coming up? Chat with our Socratic AI Lead to build a dedicated track with custom roadmap & syllabus.
                             </p>
                             <span className="mt-4 px-3 py-1.5 rounded-xl bg-white/5 group-hover:bg-rose-600 group-hover:text-white text-xs font-semibold text-neutral-300 transition">
                               Launch AI Lead Chat →

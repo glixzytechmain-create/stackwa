@@ -128,9 +128,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         setIsGeneratingPlan(true);
 
         const extracted = result.extractedProfile;
-        const targetCompany = extracted.targetCompany || 'Tech Company';
-        const role = extracted.role || 'Software Engineer';
+        const targetCompany = extracted.targetCompany || 'General Engineering Practice';
+        const role = extracted.role || 'Full-Stack / Systems Engineer';
         const seniority = extracted.seniority || 'Mid-Level';
+        const isGeneral = Boolean(extracted.isGeneralPractice || targetCompany.toLowerCase().includes('general'));
         const days = Math.max(3, extracted.daysRemaining || 7);
         const focusAreas = extracted.focusAreas || ['System Architecture', 'Algorithmic Optimization', 'Defensive Edge Cases'];
 
@@ -157,18 +158,19 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           targetCompany,
           role,
           seniority,
-          interviewDate: extracted.interviewDate || new Date(Date.now() + days * 86400000).toISOString().split('T')[0],
-          daysRemaining: days,
+          interviewDate: isGeneral ? '' : (extracted.interviewDate || new Date(Date.now() + days * 86400000).toISOString().split('T')[0]),
+          daysRemaining: isGeneral ? 0 : days,
           focusAreas,
           calendarConnected: false,
-          onboardingCompleted: true
+          onboardingCompleted: true,
+          isGeneralPractice: isGeneral
         };
 
         setTimeout(() => {
           setIsGeneratingPlan(false);
           onComplete(profile, roadmap, customChallenge);
           onClose();
-        }, 1500);
+        }, 1200);
       }
     } catch (e) {
       setIsTyping(false);

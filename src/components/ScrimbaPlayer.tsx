@@ -47,7 +47,8 @@ export const ScrimbaPlayer: React.FC<ScrimbaPlayerProps> = ({ problem, userCode 
       codeSnippet: userCode || (typeof problem.starterCode === 'string' ? problem.starterCode : problem.starterCode.javascript),
       filename: 'solution.js',
       mode,
-      teacher
+      teacher,
+      problemId: problem.id
     });
 
     setIsGenerating(false);

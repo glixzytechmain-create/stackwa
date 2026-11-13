@@ -6,11 +6,9 @@ import {
   Flame, 
   LogOut, 
   Calendar,
-  Target,
   Home,
   ChevronDown,
   Sparkles,
-  Compass,
   CheckCircle2
 } from 'lucide-react';
 import { TabType, UserInterviewProfile } from '../types';
@@ -49,8 +47,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const isVisitorMode = profile?.isGeneralPractice || profile?.targetCompany === 'General Engineering Practice';
 
   return (
     <header className="sticky top-0 z-50 oled-panel border-b border-white/10 bg-black/80 backdrop-blur-xl">
@@ -136,33 +132,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Right Section: Dynamic Status Pill, Streak & Profile Dropdown */}
           <div className="flex items-center space-x-3">
             
-            {/* Dynamic Status / Target Track Pill */}
+            {/* Neutral Goal Calibration Launcher - Decoupled from individual goal cards */}
             <button
               onClick={onOpenOnboarding}
-              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 text-xs font-semibold transition"
-              title="Click to recalibrate your track with AI Interviewer"
+              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white text-xs font-semibold transition"
+              title="Calibrate a new target interview goal with AI Interviewer"
             >
-              {isVisitorMode ? (
-                <>
-                  <Compass className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="text-white">General Practice Track</span>
-                </>
-              ) : profile?.targetCompany ? (
-                <>
-                  <Target className="w-3.5 h-3.5 text-rose-400" />
-                  <span className="text-white">{profile.targetCompany}</span>
-                  {profile.daysRemaining !== undefined && (
-                    <span className="text-[10px] text-rose-400 font-mono font-bold">
-                      ({profile.daysRemaining}d)
-                    </span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                  <span className="text-white">Calibrate Track</span>
-                </>
-              )}
+              <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+              <span>+ Calibrate Goal</span>
             </button>
 
             {/* Streak Counter */}
@@ -218,17 +195,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </div>
                       </div>
 
-                      {/* Current Track Info */}
+                      {/* Multi-Goal Workspace Info */}
                       <div className="py-2.5 px-2 my-2 rounded-xl bg-neutral-900/80 border border-white/5">
                         <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-neutral-400">Current Track:</span>
+                          <span className="text-neutral-400">Strategy:</span>
                           <span className="font-bold text-rose-400 font-mono">
-                            {isVisitorMode ? 'Visitor / General' : profile?.targetCompany || 'Uncalibrated'}
+                            Multi-Goal Architecture
                           </span>
                         </div>
-                        {profile?.role && !isVisitorMode && (
-                          <p className="text-[10px] text-neutral-400 mt-1 truncate">{profile.role}</p>
-                        )}
+                        <p className="text-[10px] text-neutral-400 mt-1">Independent goal cards for each target screen.</p>
                         {profile?.calendarConnected && (
                           <div className="flex items-center space-x-1 text-[10px] text-emerald-400 mt-1.5 font-mono">
                             <CheckCircle2 className="w-3 h-3" />
@@ -237,7 +212,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         )}
                       </div>
 
-                      {/* Switch Track / Calibrate Action */}
+                      {/* Add New Goal Action */}
                       <button
                         onClick={() => {
                           setIsProfileMenuOpen(false);
@@ -247,7 +222,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       >
                         <span className="flex items-center space-x-2">
                           <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                          <span>Switch Track / Recalibrate</span>
+                          <span>+ Calibrate New Goal</span>
                         </span>
                         <span className="text-[10px] text-neutral-400 font-mono">AI Lead</span>
                       </button>

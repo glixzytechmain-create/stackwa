@@ -111,9 +111,22 @@ function runJavaScript(
   testCases: ProblemTestCase[],
   startTime: number
 ): ExecutionOutcome {
+  const logs: string[] = [];
   try {
+    const customConsole = {
+      log: (...args: any[]) => {
+        logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+      },
+      warn: (...args: any[]) => {
+        logs.push('[WARN] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+      },
+      error: (...args: any[]) => {
+        logs.push('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+      }
+    };
+
     // Compile JavaScript code in an isolated scope
-    const factory = new Function(`
+    const factory = new Function('console', `
       "use strict";
       ${userCode};
       if (typeof ${functionName} !== 'function') {
@@ -122,7 +135,7 @@ function runJavaScript(
       return ${functionName};
     `);
 
-    const fn = factory();
+    const fn = factory(customConsole);
     const results: TestAssertionResult[] = [];
 
     for (let i = 0; i < testCases.length; i++) {
@@ -164,14 +177,16 @@ function runJavaScript(
     return {
       allPassed,
       tests: results,
-      executionTimeMs: elapsed
+      executionTimeMs: elapsed,
+      stdout: logs.join('\n')
     };
   } catch (err: any) {
     return {
       allPassed: false,
       tests: [],
       executionTimeMs: +(performance.now() - startTime).toFixed(2),
-      error: `Syntax or compilation error: ${err.message}`
+      error: `Syntax or compilation error: ${err.message}`,
+      stdout: logs.join('\n')
     };
   }
 }
