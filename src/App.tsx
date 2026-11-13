@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './components/LandingPage';
 import { SpatialCanvas } from './components/SpatialCanvas';
+import { ClickRippleEffect } from './components/ClickRippleEffect';
 import { DsaArena } from './components/DsaArena';
 import { UiDesignStudio } from './components/UiDesignStudio';
 import { AiMockRoom } from './components/AiMockRoom';
@@ -197,6 +198,9 @@ export const App: React.FC = () => {
       
       {/* 60fps OLED Motion Particle & Waveform Canvas */}
       <SpatialCanvas interactive={true} intensity="subtle" showWaveform={true} />
+
+      {/* Tactile Screen Tap Ripple Effect */}
+      <ClickRippleEffect />
 
       {/* View 1: Cinematic Motion Landing Page */}
       {currentView === 'landing' ? (
