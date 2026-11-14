@@ -12,7 +12,7 @@ import {
   Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ExecutionOutcome, runPythonUiCode } from '../services/codeExecutionService';
+import { ExecutionOutcome, runPythonUiCode, ProblemTestCase } from '../services/codeExecutionService';
 import { evaluateUiSimilarity, UiSimilarityResult } from '../services/aiService';
 
 interface LiveUiPreviewModalProps {
@@ -26,6 +26,131 @@ interface LiveUiPreviewModalProps {
   title: string;
   referenceUiCode?: string;
   isUiChallenge?: boolean;
+  testCases?: ProblemTestCase[];
+}
+
+// Helper to replace function in source code respecting nested braces
+function replaceFunctionInSource(source: string, fnName: string, newCode: string): string {
+  // Pattern 1: function fnName(...) { ... }
+  const fnPattern = new RegExp(`(?:async\\s+)?function\\s+${fnName}\\s*\\([^)]*\\)\\s*\\{`);
+  let match = fnPattern.exec(source);
+  if (match) {
+    const startIndex = match.index;
+    const braceIndex = startIndex + match[0].length - 1; // index of '{'
+    let depth = 1;
+    let endIndex = -1;
+    for (let i = braceIndex + 1; i < source.length; i++) {
+      const char = source[i];
+      if (char === '{') depth++;
+      else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          endIndex = i + 1;
+          break;
+        }
+      }
+    }
+    if (endIndex !== -1) {
+      return source.slice(0, startIndex) + newCode + source.slice(endIndex);
+    }
+  }
+
+  // Pattern 2: const/let/var fnName = (...) => { ... } or function(...) { ... }
+  const varPattern = new RegExp(`(?:const|let|var)\\s+${fnName}\\s*=\\s*(?:async\\s*)?(?:function\\s*\\([^)]*\\)|\\([^)]*\\)\\s*=>|[a-zA-Z0-9_$]+\\s*=>)\\s*\\{`);
+  match = varPattern.exec(source);
+  if (match) {
+    const startIndex = match.index;
+    const braceIndex = startIndex + match[0].length - 1; // index of '{'
+    let depth = 1;
+    let endIndex = -1;
+    for (let i = braceIndex + 1; i < source.length; i++) {
+      const char = source[i];
+      if (char === '{') depth++;
+      else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          let semi = i + 1;
+          while (semi < source.length && (source[semi] === ' ' || source[semi] === ';')) {
+            if (source[semi] === ';') { semi++; break; }
+            semi++;
+          }
+          endIndex = semi;
+          break;
+        }
+      }
+    }
+    if (endIndex !== -1) {
+      return source.slice(0, startIndex) + newCode + source.slice(endIndex);
+    }
+  }
+
+  return source;
+}
+
+// Helper to inject candidate function implementation into the UI reference harness
+function injectCandidateCodeIntoUi(referenceCode: string, candidateCode: string, fnName: string): string {
+  // 1. First attempt robust in-place replacement of the function in reference code
+  let result = replaceFunctionInSource(referenceCode, fnName, candidateCode);
+
+  // 2. Prepare override script that assigns window[fnName] and candidateCode
+  const candidateOverrideScript = `
+<script>
+  (function() {
+    try {
+      ${candidateCode}
+      if (typeof ${fnName} !== 'undefined') {
+        window['${fnName}'] = ${fnName};
+      }
+    } catch(err) {
+      console.warn("Candidate injection warning:", err);
+    }
+  })();
+</script>
+`;
+
+  // 3. Prepare reactive trigger script that dispatches events after DOM is ready
+  const reactiveRefreshScript = `
+<script>
+  (function() {
+    function triggerUpdate() {
+      try {
+        ${candidateCode}
+        if (typeof ${fnName} !== 'undefined') {
+          window['${fnName}'] = ${fnName};
+        }
+        document.querySelectorAll('input, select, textarea').forEach(function(el) {
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        if (typeof updateUI === 'function') updateUI();
+        if (typeof render === 'function') render();
+        if (typeof calculate === 'function') calculate();
+        if (typeof update === 'function') update();
+        if (typeof renderRange === 'function') renderRange();
+      } catch(e) {
+        console.warn("Reactive update warning:", e);
+      }
+    }
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(triggerUpdate, 50);
+      setTimeout(triggerUpdate, 200);
+    } else {
+      window.addEventListener('DOMContentLoaded', function() {
+        setTimeout(triggerUpdate, 50);
+        setTimeout(triggerUpdate, 200);
+      });
+    }
+  })();
+</script>
+`;
+
+  if (result.includes('</body>')) {
+    result = result.replace('</body>', `${candidateOverrideScript}${reactiveRefreshScript}</body>`);
+  } else {
+    result = `${result}${candidateOverrideScript}${reactiveRefreshScript}`;
+  }
+
+  return result;
 }
 
 export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
@@ -38,7 +163,8 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
   onReRun,
   title,
   referenceUiCode,
-  isUiChallenge = false
+  isUiChallenge = false,
+  testCases = []
 }) => {
   // Auto-detect Python vs JavaScript to prevent mismatch syntax crashes
   const isPythonPattern = /^\s*(def\s+|import\s+|from\s+|class\s+|#|elif\s+|lambda\s*:)/m.test(code);
@@ -59,8 +185,51 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
   const [isEvaluatingSimilarity, setIsEvaluatingSimilarity] = useState<boolean>(false);
 
   // Helper to construct self-contained HTML document with React 18, Babel, and Tailwind
-  const buildIframeHtml = (userSnippet: string, fnName: string, isRef: boolean = false): string => {
-    return `<!DOCTYPE html>
+  const buildIframeHtml = (userSnippet: string, fnName: string, isRef: boolean = false, cases: ProblemTestCase[] = []): string => {
+    const trimmed = userSnippet.trim();
+
+    // 1. If it's already a full HTML document, make sure Tailwind and React are present and return directly
+    if (trimmed.toLowerCase().startsWith('<!doctype html') || trimmed.toLowerCase().startsWith('<html')) {
+      let htmlDoc = trimmed;
+      if (!htmlDoc.includes('tailwindcss.com')) {
+        htmlDoc = htmlDoc.replace('<head>', '<head><script src="https://cdn.tailwindcss.com"></script>');
+      }
+      return htmlDoc;
+    }
+
+    // 2. Check if it's an HTML fragment (starts with < and contains HTML markup tags)
+    const isHtmlFragment = /^\s*<[a-z!]/i.test(trimmed) && (trimmed.includes('</') || trimmed.endsWith('/>') || trimmed.includes('<script'));
+    if (isHtmlFragment) {
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background-color: #050505;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  ${trimmed}
+</body>
+</html>`;
+    }
+
+    // 3. React Component or JSX detection
+    const isReact = /function\s+[A-Z]|const\s+[A-Z]|class\s+[A-Z]|return\s*\(|React\.|<[A-Z][a-zA-Z0-9]*\b|<div|<button|<span|<p\b|<form\b/i.test(trimmed);
+    if (isReact) {
+      return `<!DOCTYPE html>
 <!-- ${isRef ? 'AI Reference Standard' : 'Candidate Preview'} -->
 <html lang="en">
 <head>
@@ -95,71 +264,246 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
   <script type="text/babel">
     (function() {
       const rootEl = document.getElementById('root');
-      const rawCode = ${JSON.stringify(userSnippet)};
+      const rawCode = ${JSON.stringify(trimmed)};
       const targetFn = ${JSON.stringify(fnName)};
+
+      const { useState, useEffect, useMemo, useCallback, useRef } = React;
+      window.useState = useState;
+      window.useEffect = useEffect;
+      window.useMemo = useMemo;
+      window.useCallback = useCallback;
+      window.useRef = useRef;
 
       function showError(err) {
         rootEl.innerHTML = \`<div class="p-5 rounded-2xl bg-rose-950/80 border border-rose-500/40 text-rose-200 font-mono text-xs space-y-3 max-w-lg mx-auto">
           <div class="flex items-center space-x-2 text-rose-400 font-bold text-sm">
-            <span>⚠️ Execution Issue</span>
+            <span>⚠️ Component Render Error</span>
           </div>
           <div class="bg-black/60 p-3.5 rounded-xl border border-white/10 text-white font-mono text-xs whitespace-pre-wrap">\${err}</div>
         </div>\`;
       }
 
       try {
-        // 1. Direct HTML markup detection
-        const trimmed = rawCode.trim();
-        if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
-          rootEl.innerHTML = trimmed;
+        const cleanCode = rawCode
+          .replace(/export\\s+default\\s+/g, 'window.__ExportedComponent = ')
+          .replace(/import\\s+.*?from.*?;/g, '');
+
+        window.__ExportedComponent = null;
+        window.__TargetComponent = null;
+
+        eval(Babel.transform(\`
+          \${cleanCode}
+          try { if (typeof \${targetFn} !== 'undefined') window.__TargetComponent = \${targetFn}; } catch(e) {}
+          try { if (typeof App !== 'undefined') window.__TargetComponent = App; } catch(e) {}
+          try { if (typeof Solution !== 'undefined') window.__TargetComponent = Solution; } catch(e) {}
+          try { if (typeof Component !== 'undefined') window.__TargetComponent = Component; } catch(e) {}
+        \`, { presets: ['react'] }).code);
+
+        const Comp = window.__ExportedComponent || window.__TargetComponent;
+        if (Comp && typeof Comp === 'function') {
+          const root = ReactDOM.createRoot(rootEl);
+          root.render(React.createElement(Comp));
           return;
         }
 
-        // 2. React Component detection
-        const isReact = /function\\s+[A-Z]|const\\s+[A-Z]|class\\s+[A-Z]|return\\s*\\([\\s\\S]*<|React\\./i.test(rawCode);
-        if (isReact) {
-          // Mount React component
-          const cleanCode = rawCode
-            .replace(/export\\s+default\\s+/g, 'window.__ExportedComponent = ')
-            .replace(/import\\s+.*?from.*?;/g, '');
-
-          eval(Babel.transform(cleanCode + '\\n; window.__ComponentReady = true;', { presets: ['react'] }).code);
-
-          const ComponentToRender = window.__ExportedComponent || window[targetFn] || window.App || window.Component;
-          if (ComponentToRender) {
-            const root = ReactDOM.createRoot(rootEl);
-            root.render(React.createElement(ComponentToRender));
-            return;
-          }
-        }
-
-        // 3. Vanilla JS DOM evaluation
-        const runner = new Function('root', 'document', 'window',
-          rawCode + '\\n' +
-          'if (typeof ' + targetFn + ' === "function") {\\n' +
-          '  try { return ' + targetFn + '(); } catch(e) { return null; }\\n' +
-          '}\\n' +
-          'return null;'
-        );
-        const evalResult = runner(rootEl, document, window);
-
-        if (evalResult instanceof HTMLElement) {
-          rootEl.innerHTML = '';
-          rootEl.appendChild(evalResult);
-        } else if (typeof evalResult === 'string' && evalResult.includes('<') && evalResult.includes('>')) {
-          rootEl.innerHTML = evalResult;
-        } else if (rootEl.children.length === 1 && rootEl.children[0].textContent.includes('Rendering preview')) {
+        // Vanilla DOM check inside React branch
+        if (rootEl.children.length === 1 && rootEl.children[0].textContent.includes('Rendering preview')) {
           rootEl.innerHTML = \`<div class="p-6 rounded-2xl bg-neutral-900 border border-white/10 text-white space-y-3 max-w-md text-center">
-            <div class="text-xs font-mono text-emerald-400 uppercase font-bold tracking-wider">Algorithmic Function Executed</div>
-            <div class="bg-black/80 p-3 rounded-xl font-mono text-xs text-neutral-300 border border-white/5">
-              Result: \${evalResult !== null && evalResult !== undefined ? JSON.stringify(evalResult) : 'Done'}
-            </div>
-            <p class="text-[11px] text-neutral-400">Return an HTML/Tailwind string or mount a React component to preview live UI.</p>
+            <div class="text-xs font-mono text-emerald-400 uppercase font-bold tracking-wider">Mounted Successfully</div>
+            <p class="text-[11px] text-neutral-400">Component initialized without visual output.</p>
           </div>\`;
         }
       } catch (e) {
         showError(e.message || String(e));
       }
+    })();
+  </script>
+</body>
+</html>`;
+    }
+
+    // 4. Algorithmic / Vanilla JavaScript Function: Interactive Playground
+    return `<!DOCTYPE html>
+<!-- ${isRef ? 'AI Reference Standard' : 'Candidate Preview'} -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background-color: #050505;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-center">
+  <div id="algo-container" class="w-full max-w-xl mx-auto space-y-4">
+    <!-- Header -->
+    <div class="p-4 rounded-2xl bg-neutral-900 border border-white/10 space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider">Live Function Inspector</span>
+        </div>
+        <span class="text-[11px] font-mono text-neutral-400 bg-neutral-800 px-2 py-0.5 rounded-md border border-white/5">${isRef ? 'Reference Logic' : 'Candidate Logic'}</span>
+      </div>
+      <div class="font-mono text-sm font-semibold text-white truncate">
+        function <span class="text-rose-400">${fnName}</span>(<span class="text-neutral-400">...parameters</span>)
+      </div>
+    </div>
+
+    <!-- Live Execution Card -->
+    <div class="p-5 rounded-2xl bg-neutral-900/90 border border-white/10 space-y-4">
+      <div class="text-xs font-bold text-neutral-300 uppercase tracking-wider font-mono">Test Inputs & Parameters</div>
+      <div id="params-list" class="space-y-2.5"></div>
+
+      <button id="run-btn" class="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-[0.99] text-white font-mono text-xs font-bold transition flex items-center justify-center space-x-2 shadow-lg shadow-rose-950/40">
+        <span>▶ Execute Function</span>
+      </button>
+
+      <!-- Output Section -->
+      <div class="space-y-1.5 pt-2 border-t border-white/10">
+        <div class="flex items-center justify-between text-xs font-mono">
+          <span class="text-neutral-400">Output Result:</span>
+          <span id="exec-status" class="text-emerald-400 font-bold"></span>
+        </div>
+        <pre id="output-box" class="p-3.5 rounded-xl bg-black border border-white/10 font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre-wrap min-h-[48px] flex items-center"></pre>
+      </div>
+    </div>
+
+    <!-- Test Cases Quick Selector -->
+    <div id="cases-container" class="p-4 rounded-2xl bg-neutral-900/60 border border-white/10 space-y-3">
+      <div class="text-xs font-mono text-neutral-400 font-bold uppercase tracking-wider">Available Test Cases</div>
+      <div id="cases-list" class="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1"></div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const rawCode = ${JSON.stringify(trimmed)};
+      const targetFn = ${JSON.stringify(fnName)};
+      const testCases = ${JSON.stringify(cases || [])};
+
+      let userFn = null;
+      try {
+        eval(rawCode);
+        if (typeof window[targetFn] === 'function') {
+          userFn = window[targetFn];
+        } else if (typeof eval(targetFn) === 'function') {
+          userFn = eval(targetFn);
+        }
+      } catch (err) {
+        document.getElementById('algo-container').innerHTML = \`
+          <div class="p-5 rounded-2xl bg-rose-950/80 border border-rose-500/40 text-rose-200 font-mono text-xs space-y-3">
+            <div class="flex items-center space-x-2 text-rose-400 font-bold text-sm">
+              <span>⚠️ Execution Error</span>
+            </div>
+            <pre class="bg-black/60 p-3 rounded-xl border border-white/10 text-white whitespace-pre-wrap">\${err.message || String(err)}</pre>
+          </div>
+        \`;
+        return;
+      }
+
+      if (!userFn) {
+        document.getElementById('output-box').textContent = "Function '" + targetFn + "' not found or not callable.";
+        return;
+      }
+
+      // Initial arguments from first test case
+      let currentArgs = testCases.length > 0 && Array.isArray(testCases[0].input)
+        ? JSON.parse(JSON.stringify(testCases[0].input))
+        : [];
+
+      const paramsListEl = document.getElementById('params-list');
+      function renderParamInputs() {
+        paramsListEl.innerHTML = '';
+        if (currentArgs.length === 0) {
+          paramsListEl.innerHTML = '<div class="text-xs font-mono text-neutral-500 italic">No parameters required.</div>';
+          return;
+        }
+        currentArgs.forEach((val, idx) => {
+          const row = document.createElement('div');
+          row.className = 'flex items-center space-x-2 text-xs font-mono';
+          row.innerHTML = \`
+            <span class="text-neutral-400 w-24 truncate">arg[\${idx}]:</span>
+            <input type="text" data-idx="\${idx}" value="\${typeof val === 'string' ? val : JSON.stringify(val)}" class="flex-1 bg-black border border-white/10 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-rose-500 transition" />
+          \`;
+          paramsListEl.appendChild(row);
+        });
+      }
+
+      function executeCurrentArgs() {
+        const inputs = paramsListEl.querySelectorAll('input');
+        const parsed = [];
+        inputs.forEach((input) => {
+          const val = input.value;
+          try {
+            parsed.push(JSON.parse(val));
+          } catch(e) {
+            parsed.push(val);
+          }
+        });
+        currentArgs = parsed;
+
+        try {
+          const t0 = performance.now();
+          const res = userFn.apply(null, currentArgs);
+          const t1 = performance.now();
+          const ms = (t1 - t0).toFixed(2);
+
+          const outEl = document.getElementById('output-box');
+          const statusEl = document.getElementById('exec-status');
+          statusEl.textContent = '⚡ ' + ms + 'ms';
+          statusEl.className = 'text-emerald-400 font-bold';
+          outEl.textContent = res !== undefined ? JSON.stringify(res, null, 2) : 'undefined';
+          outEl.className = 'p-3.5 rounded-xl bg-black border border-emerald-500/30 font-mono text-xs text-emerald-300 overflow-x-auto whitespace-pre-wrap min-h-[48px]';
+        } catch(e) {
+          const outEl = document.getElementById('output-box');
+          const statusEl = document.getElementById('exec-status');
+          statusEl.textContent = '❌ Threw Error';
+          statusEl.className = 'text-rose-400 font-bold';
+          outEl.textContent = e.message || String(e);
+          outEl.className = 'p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 font-mono text-xs text-rose-300 overflow-x-auto whitespace-pre-wrap min-h-[48px]';
+        }
+      }
+
+      // Render test cases selector
+      const casesListEl = document.getElementById('cases-list');
+      if (testCases.length === 0) {
+        document.getElementById('cases-container').style.display = 'none';
+      } else {
+        testCases.forEach((tc, idx) => {
+          const btn = document.createElement('button');
+          btn.className = 'w-full text-left p-2 rounded-xl bg-black/40 hover:bg-neutral-800 border border-white/5 transition flex items-center justify-between text-xs font-mono';
+          btn.innerHTML = \`
+            <div class="truncate pr-2">
+              <span class="text-neutral-400">#\${idx + 1}</span>
+              <span class="text-white ml-2">\${tc.title || tc.inputStr || 'Case ' + (idx + 1)}</span>
+            </div>
+            <span class="text-[10px] text-rose-400 shrink-0 font-bold">Load Case →</span>
+          \`;
+          btn.onclick = () => {
+            currentArgs = Array.isArray(tc.input) ? JSON.parse(JSON.stringify(tc.input)) : [tc.input];
+            renderParamInputs();
+            executeCurrentArgs();
+          };
+          casesListEl.appendChild(btn);
+        });
+      }
+
+      renderParamInputs();
+      executeCurrentArgs();
+
+      document.getElementById('run-btn').onclick = executeCurrentArgs;
+      paramsListEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') executeCurrentArgs();
+      });
     })();
   </script>
 </body>
@@ -196,12 +540,8 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
       return () => { isMounted = false; };
     }
 
-    // Compile candidate code
-    const candidateHtml = buildIframeHtml(code, functionName, false);
-    setSrcDoc(candidateHtml);
-
-    // Compile reference code if available
-    const effectiveReferenceCode = referenceUiCode || `
+    // Determine reference code
+    const effectiveReferenceCode = referenceUiCode || (isUiChallenge ? `
       function Solution() {
         return (
           <div className="p-6 rounded-3xl bg-neutral-900 border border-white/10 text-white max-w-sm space-y-4 shadow-2xl">
@@ -215,8 +555,27 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
           </div>
         );
       }
-    `;
-    setReferenceSrcDoc(buildIframeHtml(effectiveReferenceCode, 'Solution', true));
+    ` : '');
+
+    // Check if candidate wrote their own complete UI
+    const candidateHasCustomUi = /^\s*<!DOCTYPE|^\s*<html|<\/(?:div|button|section|main|p|table|form|svg|canvas)>|ReactDOM\.render|createRoot|export\s+default/i.test(code);
+
+    // If it's a UI challenge and candidate wrote the algorithmic logic, inject candidate function into UI reference harness
+    let candidateSnippet = code;
+    if (!candidateHasCustomUi && effectiveReferenceCode) {
+      candidateSnippet = injectCandidateCodeIntoUi(effectiveReferenceCode, code, functionName);
+    }
+
+    // Compile candidate code
+    const candidateHtml = buildIframeHtml(candidateSnippet, functionName, false, testCases);
+    setSrcDoc(candidateHtml);
+
+    // Compile reference code if available
+    if (effectiveReferenceCode) {
+      setReferenceSrcDoc(buildIframeHtml(effectiveReferenceCode, functionName || 'Solution', true, testCases));
+    } else {
+      setReferenceSrcDoc('');
+    }
     setIsCompiling(false);
 
     // Evaluate similarity
@@ -231,7 +590,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
     }
 
     return () => { isMounted = false; };
-  }, [isOpen, code, functionName, effectiveLanguage, referenceUiCode, previewMode, title, isUiChallenge]);
+  }, [isOpen, code, functionName, effectiveLanguage, referenceUiCode, previewMode, title, isUiChallenge, testCases]);
 
   if (!isOpen) return null;
 
