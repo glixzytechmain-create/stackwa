@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Flame, 
   Code2, 
@@ -11,10 +11,15 @@ import {
   Award,
   CheckCircle2,
   Clock,
-  Calendar
+  Calendar,
+  Star,
+  Play,
+  Sparkles,
+  X,
+  ArrowLeft
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { TabType, UserInterviewProfile } from '../types';
+import { motion, AnimatePresence } from 'framer-motion';
+import { TabType, UserInterviewProfile, SavedVisualExplanation } from '../types';
 import { SpotlightCard } from './SpotlightCard';
 
 interface ProgressDashboardProps {
@@ -36,6 +41,7 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
   profile,
   setActiveTab
 }) => {
+  const [activeSavedExpl, setActiveSavedExpl] = useState<SavedVisualExplanation | null>(null);
   const dsaPercent = Math.round((solvedCount / totalProblems) * 100);
   const uiPercent = Math.round((completedFlowsCount / totalFlows) * 100);
   const overallReadiness = Math.round((dsaPercent + uiPercent) / 2);
@@ -249,6 +255,15 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
                 </div>
 
                 <div className="flex items-center space-x-4">
+                  {record.round1Score !== undefined && (
+                    <div className="hidden lg:flex items-center space-x-2 text-[10px] text-neutral-400 border-r border-white/10 pr-3">
+                      <span>R1: <strong className="text-rose-400">{record.round1Score}%</strong></span>
+                      <span>•</span>
+                      <span>R2: <strong className="text-blue-400">{record.round2Score ?? 0}%</strong></span>
+                      <span>•</span>
+                      <span>R3: <strong className="text-purple-400">{record.round3Score ?? 0}%</strong></span>
+                    </div>
+                  )}
                   <div className="text-right">
                     <div className="text-[10px] text-neutral-500 uppercase">Solved</div>
                     <div className="font-bold text-white text-sm">
@@ -264,7 +279,7 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
                         ? 'text-amber-400' 
                         : 'text-rose-400'
                     }`}>
-                      {record.scorePercentage}%
+                      {record.totalScore ?? record.scorePercentage}%
                     </div>
                   </div>
                 </div>
@@ -279,6 +294,81 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
             </p>
             <p className="text-[11px] text-neutral-500">
               Start a Round 1 Rehearsal session for any target company and click <strong>Submit Test</strong> to track your permanent performance telemetry.
+            </p>
+          </div>
+        )}
+      </SpotlightCard>
+
+      {/* ================= SAVED VISUAL EXPLANATIONS & MOTION MODELS ================= */}
+      <SpotlightCard spotlightColor="rgba(245, 158, 11, 0.22)" className="p-8 border border-white/10 bg-neutral-950/80 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <span className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+            </span>
+            <div>
+              <h3 className="text-lg font-bold text-white tracking-tight">
+                Saved Visual Explanations & Motion Models
+              </h3>
+              <p className="text-xs text-neutral-400">
+                Interactive step-by-step invariant visualizations bookmarked during company rehearsal screens
+              </p>
+            </div>
+          </div>
+
+          <span className="text-xs font-mono px-3 py-1 rounded-full bg-white/5 border border-white/10 text-neutral-300">
+            {profile?.savedExplanations?.length || 0} Models Saved
+          </span>
+        </div>
+
+        {profile?.savedExplanations && profile.savedExplanations.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {profile.savedExplanations.map((expl) => (
+              <div
+                key={expl.id}
+                className="group p-5 rounded-2xl bg-black/60 border border-white/10 hover:border-amber-500/40 transition flex flex-col justify-between space-y-4 shadow-lg hover:shadow-amber-500/10"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold uppercase">
+                      {expl.company} • {expl.category}
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      {new Date(expl.savedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-white group-hover:text-amber-200 transition line-clamp-2">
+                    {expl.problemTitle}
+                  </h4>
+                  <p className="text-[11px] text-neutral-400 line-clamp-2">
+                    Native HTML5 / Canvas Invariant Model with interactive playhead, step controls, and algorithmic state graphs.
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                  <span className="text-[10px] text-neutral-500 font-mono flex items-center space-x-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Visual Graphic Ready</span>
+                  </span>
+                  <button
+                    onClick={() => setActiveSavedExpl(expl)}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold transition shadow-sm"
+                  >
+                    <Play className="w-3 h-3 fill-amber-300" />
+                    <span>Launch Model</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 rounded-xl bg-black/40 border border-white/5 text-center space-y-2">
+            <Star className="w-8 h-8 text-neutral-600 mx-auto" />
+            <p className="text-xs text-neutral-400 font-mono">
+              No visual invariant models bookmarked yet.
+            </p>
+            <p className="text-[11px] text-neutral-500 max-w-md mx-auto">
+              When solving a problem in Round 1 Rehearsal, generate a step-by-step visual solution and click <strong>⭐ Save Explanation</strong> to store the live interactive canvas in your profile vault.
             </p>
           </div>
         )}
@@ -316,6 +406,57 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
           </div>
         </div>
       </SpotlightCard>
+
+      {/* Saved Visual Explanation Fullscreen Modal */}
+      <AnimatePresence>
+        {activeSavedExpl && (
+          <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col p-4 sm:p-6 overflow-hidden">
+            <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setActiveSavedExpl(null)}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition shadow-lg shadow-amber-600/30"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back to Matrix</span>
+                </button>
+                <div>
+                  <div className="flex items-center space-x-2.5">
+                    <span className="text-xs px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold font-mono">
+                      {activeSavedExpl.company} • {activeSavedExpl.category}
+                    </span>
+                    <h3 className="text-base font-extrabold text-white tracking-tight">
+                      {activeSavedExpl.problemTitle}
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+                    Saved Interactive Invariant Model • Bookmarked from Round 1 Vault
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setActiveSavedExpl(null)}
+                  className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-white/10 transition"
+                  title="Close Fullscreen"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 w-full mt-4 rounded-2xl border border-white/10 bg-neutral-950 overflow-hidden shadow-2xl relative">
+              <iframe
+                srcDoc={activeSavedExpl.htmlContent}
+                title={`${activeSavedExpl.problemTitle} - Saved Visual Model`}
+                sandbox="allow-scripts"
+                className="w-full h-full border-0"
+              />
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

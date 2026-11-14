@@ -193,13 +193,43 @@ function getFallbackGenerativeHtml(title: string, company: string): string {
 }
 
 const CACHE_PREFIX = 'stackwa_generative_visual_';
+const memoryVisualCache = new Map<string, string>();
 
-// Retrieve cached visual graphic from localStorage
-export function getCachedVisualGraphic(problemId: string): string | null {
+function normalizeTitleKey(title: string): string {
+  return title.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+// Retrieve cached visual graphic from memory cache or localStorage
+export function getCachedVisualGraphic(problemId: string, problemTitle?: string): string | null {
+  // Check memory cache first
+  if (memoryVisualCache.has(problemId)) {
+    return memoryVisualCache.get(problemId)!;
+  }
+  if (problemTitle) {
+    const titleKey = normalizeTitleKey(problemTitle);
+    if (memoryVisualCache.has(titleKey)) {
+      return memoryVisualCache.get(titleKey)!;
+    }
+  }
+
   try {
-    const cached = localStorage.getItem(`${CACHE_PREFIX}${problemId}`);
-    if (cached && (cached.startsWith('<!DOCTYPE') || cached.includes('<html'))) {
-      return cached;
+    // Check localStorage by problem ID
+    const cachedById = localStorage.getItem(`${CACHE_PREFIX}${problemId}`);
+    if (cachedById && (cachedById.startsWith('<!DOCTYPE') || cachedById.includes('<html'))) {
+      memoryVisualCache.set(problemId, cachedById);
+      if (problemTitle) memoryVisualCache.set(normalizeTitleKey(problemTitle), cachedById);
+      return cachedById;
+    }
+
+    // Check localStorage by normalized problem title
+    if (problemTitle) {
+      const titleKey = normalizeTitleKey(problemTitle);
+      const cachedByTitle = localStorage.getItem(`${CACHE_PREFIX}title_${titleKey}`);
+      if (cachedByTitle && (cachedByTitle.startsWith('<!DOCTYPE') || cachedByTitle.includes('<html'))) {
+        memoryVisualCache.set(problemId, cachedByTitle);
+        memoryVisualCache.set(titleKey, cachedByTitle);
+        return cachedByTitle;
+      }
     }
   } catch (e) {
     console.warn("Error reading cached visual:", e);
@@ -207,11 +237,22 @@ export function getCachedVisualGraphic(problemId: string): string | null {
   return null;
 }
 
-// Persist visual graphic to localStorage cache
-export function setCachedVisualGraphic(problemId: string, html: string): void {
+// Persist visual graphic to memory cache and localStorage
+export function setCachedVisualGraphic(problemId: string, html: string, problemTitle?: string): void {
+  if (!html || (!html.startsWith('<!DOCTYPE') && !html.includes('<html'))) {
+    return;
+  }
+
+  // Always persist in memory
+  memoryVisualCache.set(problemId, html);
+  if (problemTitle) {
+    memoryVisualCache.set(normalizeTitleKey(problemTitle), html);
+  }
+
   try {
-    if (html && (html.startsWith('<!DOCTYPE') || html.includes('<html'))) {
-      localStorage.setItem(`${CACHE_PREFIX}${problemId}`, html);
+    localStorage.setItem(`${CACHE_PREFIX}${problemId}`, html);
+    if (problemTitle) {
+      localStorage.setItem(`${CACHE_PREFIX}title_${normalizeTitleKey(problemTitle)}`, html);
     }
   } catch (e) {
     console.warn("Storage quota or error saving visual to cache:", e);
@@ -223,8 +264,8 @@ export async function generateInteractiveGraphic(
   problem: DsaProblem,
   company: string = 'Tech'
 ): Promise<string> {
-  // Check persistent cache first so user never has to regenerate upon refresh
-  const cached = getCachedVisualGraphic(problem.id);
+  // Check persistent cache first so user never has to regenerate upon refresh or question switch
+  const cached = getCachedVisualGraphic(problem.id, problem.title);
   if (cached) {
     return cached;
   }
@@ -265,7 +306,7 @@ REQUIREMENTS:
       // Strip markdown code fences if model enclosed them
       rawText = rawText.replace(/^```html\s*/i, '').replace(/```$/i, '').trim();
       if (rawText.startsWith('<!DOCTYPE') || rawText.includes('<html')) {
-        setCachedVisualGraphic(problem.id, rawText);
+        setCachedVisualGraphic(problem.id, rawText, problem.title);
         return rawText;
       }
     }
@@ -274,6 +315,6 @@ REQUIREMENTS:
   }
 
   const fallback = getFallbackGenerativeHtml(problem.title, company);
-  setCachedVisualGraphic(problem.id, fallback);
+  setCachedVisualGraphic(problem.id, fallback, problem.title);
   return fallback;
 }

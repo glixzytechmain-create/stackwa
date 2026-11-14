@@ -14,7 +14,6 @@ import {
   Layout,
   Cpu,
   CheckCircle2,
-  Box,
   AlertTriangle,
   Calendar,
   BarChart3,
@@ -29,11 +28,20 @@ import {
   X,
   ExternalLink,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
-import { DsaProblem, InterviewClarifyingQuestion, UserInterviewProfile, DayPlan, TestSessionRecord } from '../types';
+import { 
+  DsaProblem, 
+  InterviewClarifyingQuestion, 
+  UserInterviewProfile, 
+  DayPlan, 
+  TestSessionRecord,
+  QuestionMode,
+  SavedVisualExplanation
+} from '../types';
 import { InterviewTrack, GoalSectionTab } from './InterviewCard';
 import { DSA_PROBLEMS } from '../data/dsaProblems';
 import { UI_CHALLENGES } from '../data/uiFlows';
@@ -44,16 +52,18 @@ import {
   generateStepByStepFix, 
   getAiSuggestedSessionBlueprint, 
   StepByStepFix, 
-  SessionBlueprint 
+  SessionBlueprint,
+  generateAdaptiveMcqs,
+  McqQuestion
 } from '../services/aiService';
 import { generateInteractiveGraphic, getCachedVisualGraphic, setCachedVisualGraphic } from '../services/generativeUiService';
 import { MonacoTypingEffectOverlay } from './MonacoTypingEffectOverlay';
-import { sendAnakinChatMessage } from '../services/anakinService';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
 import { RaiseHandModal } from './RaiseHandModal';
 import { RoadmapView } from './RoadmapView';
 import { AiMockRoom } from './AiMockRoom';
 import { ProgressDashboard } from './ProgressDashboard';
+import { VoiceDebateRoom } from './VoiceDebateRoom';
 import confetti from 'canvas-confetti';
 
 interface InterviewEnvironmentProps {
@@ -66,47 +76,11 @@ interface InterviewEnvironmentProps {
   onToggleDay?: (dayNumber: number) => void;
   onOpenSettings?: () => void;
   onSaveTestRecord?: (record: TestSessionRecord) => void;
+  onSaveExplanation?: (explanation: SavedVisualExplanation) => void;
   solvedCount?: number;
   completedFlowsCount?: number;
   streakDays?: number;
 }
-
-export type QuestionMode = 'code' | 'system-visualizer' | 'mcq' | 'system-reasoning';
-
-interface McqQuestion {
-  id: string;
-  question: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
-}
-
-const DEFAULT_MCQS: McqQuestion[] = [
-  {
-    id: 'mcq-1',
-    question: "When architecting a high-throughput API gateway with sliding-window rate limiting, why is a sorted monotonic set preferred over a Redis INCR counter?",
-    options: [
-      "Monotonic sets guarantee sub-millisecond precision without atomic race-condition resets at window borders.",
-      "Redis INCR consumes O(N) memory per client while monotonic sets use O(1).",
-      "Monotonic sets eliminate the need for TLS encryption in transit.",
-      "INCR counters do not support clustering or distributed master-slave nodes."
-    ],
-    correctIndex: 0,
-    explanation: "Fixed INCR counters suffer from boundary bursts (e.g. 2x limit arriving at window seams), whereas monotonic sliding sets strictly measure elapsed time deltas."
-  },
-  {
-    id: 'mcq-2',
-    question: "In React 19, what happens to optimistic UI mutations if the underlying server request rejects with an HTTP 409 conflict?",
-    options: [
-      "The entire component tree crashes with an UnhandledRejection error.",
-      "useOptimistic automatically rolls state back to the previous immutable snapshot.",
-      "The browser forcibly refreshes the page to reconcile state.",
-      "The mutation persists permanently in localStorage."
-    ],
-    correctIndex: 1,
-    explanation: "React's optimistic dispatch rolls state back to the server-confirmed snapshot automatically when the mutation action promise rejects."
-  }
-];
 
 export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   track,
@@ -118,6 +92,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   onToggleDay,
   onOpenSettings,
   onSaveTestRecord,
+  onSaveExplanation,
   solvedCount = 0,
   completedFlowsCount = 0,
   streakDays = 1
@@ -436,12 +411,12 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setAiFixData(null);
     setTestRun({ isRunning: false, hasRun: false, outcome: null });
     // Restore cached visual graphic if available for this problem
-    const cachedGraphic = getCachedVisualGraphic(nextProblem.id);
+    const cachedGraphic = getCachedVisualGraphic(nextProblem.id, nextProblem.title);
     if (cachedGraphic) {
       setGenerativeHtml(cachedGraphic);
+      setShowGenerativeVisual(true);
     } else {
       setGenerativeHtml(null);
-      setShowGenerativeVisual(false);
     }
 
     // Restore saved code if exists, otherwise keep empty for typing placeholder
@@ -523,7 +498,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setShowGenerativeVisual(true);
 
     // Check persistent cache first so user never needs to regenerate
-    const cached = getCachedVisualGraphic(selectedProblem.id);
+    const cached = getCachedVisualGraphic(selectedProblem.id, selectedProblem.title);
     if (cached) {
       setGenerativeHtml(cached);
       return;
@@ -534,7 +509,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
       try {
         const html = await generateInteractiveGraphic(selectedProblem, track.company);
         setGenerativeHtml(html);
-        setCachedVisualGraphic(selectedProblem.id, html);
+        setCachedVisualGraphic(selectedProblem.id, html, selectedProblem.title);
       } catch (err) {
         console.error("Generative UI generation failed:", err);
       } finally {
@@ -543,12 +518,34 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     }
   };
 
-  // Submit Session Flow
+  // Save current generative visual explanation to profile vault
+  const handleSaveExplanation = () => {
+    if (!generativeHtml || !selectedProblem) return;
+    const newExplanation: SavedVisualExplanation = {
+      id: `expl-${Date.now()}-${selectedProblem.id}`,
+      problemId: selectedProblem.id,
+      problemTitle: selectedProblem.title,
+      category: selectedProblem.category,
+      company: track.company,
+      htmlContent: generativeHtml,
+      savedAt: new Date().toISOString()
+    };
+    if (onSaveExplanation) {
+      onSaveExplanation(newExplanation);
+    }
+    setSavedExplSuccess(true);
+    setTimeout(() => setSavedExplSuccess(false), 3000);
+  };
+
+  // Submit Session Flow with Composite 3-Round Scorecard
   const handleSubmitSession = () => {
     setIsSubmitting(true);
     const totalQ = Math.max(1, batchQuestions.length);
     const solvedQ = solvedQuestionIds.size;
-    const scorePct = Math.round((solvedQ / totalQ) * 100);
+    const r1Score = Math.round((solvedQ / totalQ) * 100);
+    const r2Score = answeredMcqCount > 0 ? Math.round((correctMcqCount / answeredMcqCount) * 100) : round2Score;
+    const r3Score = round3Score ?? 85;
+    const compositeScore = Math.round(0.40 * r1Score + 0.30 * r2Score + 0.30 * r3Score);
     const timeSpent = Math.max(1, totalSeconds - secondsLeft);
 
     const record: TestSessionRecord = {
@@ -559,10 +556,14 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
       batchNumber: batchNumber,
       totalQuestions: totalQ,
       solvedQuestions: solvedQ,
-      scorePercentage: scorePct,
+      scorePercentage: compositeScore,
       durationSeconds: timeSpent,
       completedAt: new Date().toISOString(),
-      questionTitles: batchQuestions.map(q => q.title)
+      questionTitles: batchQuestions.map(q => q.title),
+      round1Score: r1Score,
+      round2Score: r2Score,
+      round3Score: r3Score,
+      totalScore: compositeScore
     };
 
     if (onSaveTestRecord) {
@@ -583,34 +584,50 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     } catch {}
   };
 
-
-  // Mobbin UI Round 2 State
-  const [selectedUiChallenge, setSelectedUiChallenge] = useState(UI_CHALLENGES[0]);
-  const [activeUiSection, setActiveUiSection] = useState<'hierarchy' | 'state' | 'edge-cases' | 'quiz'>('hierarchy');
-  const [mobbinQuizAnswer, setMobbinQuizAnswer] = useState<number | null>(null);
-  const [mobbinQuizSubmitted, setMobbinQuizSubmitted] = useState(false);
-
-  // Evaluator Engine (Gemini 3.8 Flash vs Anakin.ai Agent)
-  const [evaluatorEngine, setEvaluatorEngine] = useState<'gemini' | 'anakin'>('gemini');
-
   // Modals & Panels
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isRaiseHandOpen, setIsRaiseHandOpen] = useState(false);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<InterviewClarifyingQuestion[]>([]);
 
-  // Architecture MCQ State
-  const [mcqList] = useState<McqQuestion[]>(DEFAULT_MCQS);
+  // Round 2 Adaptive Architecture MCQ State (Zero Preloaded Questions)
+  const [mcqList, setMcqList] = useState<McqQuestion[]>([]);
   const [currentMcqIndex, setCurrentMcqIndex] = useState(0);
   const [selectedMcqAnswer, setSelectedMcqAnswer] = useState<number | null>(null);
   const [mcqSubmitted, setMcqSubmitted] = useState(false);
+  const [mcqDifficulty, setMcqDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
+  const [isLoadingMcqs, setIsLoadingMcqs] = useState(false);
+  const [round2Score, setRound2Score] = useState<number>(100);
+  const [correctMcqCount, setCorrectMcqCount] = useState<number>(0);
+  const [answeredMcqCount, setAnsweredMcqCount] = useState<number>(0);
 
-  // System Reasoning State
-  const [reasoningPrompt] = useState<string>(
-    `In ${track.company}'s distributed environment, how would you design an idempotent payment transaction ledger to eliminate duplicate debits under 500ms network timeouts?`
-  );
-  const [reasoningAnswer, setReasoningAnswer] = useState<string>('');
-  const [reasoningFeedback, setReasoningFeedback] = useState<string | null>(null);
-  const [isEvaluatingReasoning, setIsEvaluatingReasoning] = useState(false);
+  // Round 3 Live Voice Debate State
+  const [round3Score, setRound3Score] = useState<number | null>(null);
+
+  // Save Explanation State
+  const [savedExplSuccess, setSavedExplSuccess] = useState<boolean>(false);
+
+  // Dynamically load adaptive MCQs calibrated to candidate seniority & role
+  const loadAdaptiveMcqs = async (diff: 'Easy' | 'Medium' | 'Hard') => {
+    setIsLoadingMcqs(true);
+    setMcqDifficulty(diff);
+    try {
+      const generated = await generateAdaptiveMcqs(profile, diff, 4);
+      setMcqList(generated);
+      setCurrentMcqIndex(0);
+      setSelectedMcqAnswer(null);
+      setMcqSubmitted(false);
+    } catch (e) {
+      console.warn("Failed to generate adaptive MCQs:", e);
+    } finally {
+      setIsLoadingMcqs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (questionMode === 'mcq' && mcqList.length === 0 && !isLoadingMcqs) {
+      loadAdaptiveMcqs(mcqDifficulty);
+    }
+  }, [questionMode]);
 
   // Mid-Question Socratic Agent Chat
   const [agentInput, setAgentInput] = useState('');
@@ -694,36 +711,6 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     }
   };
 
-  // Evaluate System Reasoning Question
-  const handleEvaluateReasoning = async () => {
-    if (!reasoningAnswer.trim()) return;
-    setIsEvaluatingReasoning(true);
-
-    const prompt = `As a Principal Engineer at ${track.company}, evaluate this candidate's technical reasoning.
-Question: ${reasoningPrompt}
-Candidate Answer: ${reasoningAnswer}
-Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive Edge Cases. Give a crisp 2-sentence grade and recommendation.`;
-
-    if (evaluatorEngine === 'anakin') {
-      try {
-        const anakinRes = await sendAnakinChatMessage(prompt);
-        if (anakinRes.success && anakinRes.reply) {
-          setReasoningFeedback(`[Anakin.ai Studio Agent]: ${anakinRes.reply}`);
-        } else {
-          const reply = await askAiCoach(prompt);
-          setReasoningFeedback(`[Anakin Token Active • Gemini Engine]: ${reply}`);
-        }
-      } catch {
-        const reply = await askAiCoach(prompt);
-        setReasoningFeedback(reply);
-      }
-    } else {
-      const reply = await askAiCoach(prompt);
-      setReasoningFeedback(reply);
-    }
-    setIsEvaluatingReasoning(false);
-  };
-
   // Mid-Question Conversational Steering
   const handleSendAgentMessage = async () => {
     if (!agentInput.trim() || isAgentTyping) return;
@@ -735,19 +722,41 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
 
     const lower = text.toLowerCase();
 
-    // 1. Steering: switch to System Visualizer
-    if (lower.includes('visualizer') || lower.includes('ui') || lower.includes('design') || lower.includes('component')) {
-      setQuestionMode('system-visualizer');
+    // 1. Steering: switch to Live Voice Debate (Round 3)
+    if (lower.includes('debate') || lower.includes('voice') || lower.includes('speak') || lower.includes('oral') || lower.includes('round 3')) {
+      setQuestionMode('voice-debate');
       setIsAgentTyping(false);
       setAgentMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         sender: 'agent',
-        text: "Switched to Round 2: Interactive System Visualizer & Architecture Flow. Explore component trees and state boundaries above!"
+        text: "Switched to Round 3: Live Voice Debate Room. Grab your microphone and defend your architecture out loud!"
       }]);
       return;
     }
 
-    // 2. Steering: switch to MCQ
+    // 2. Steering: switch to MCQ (Round 2)
+    if (lower.includes('mcq') || lower.includes('quiz') || lower.includes('multiple choice') || lower.includes('round 2')) {
+      setQuestionMode('mcq');
+      setIsAgentTyping(false);
+      setAgentMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'agent',
+        text: "Switched to Round 2: Adaptive Architecture MCQs. Seniority-calibrated technical reasoning drill active!"
+      }]);
+      return;
+    }
+
+    // 3. Steering: switch to coding / UI Sandbox (Round 1)
+    if (lower.includes('code') || lower.includes('algorithm') || lower.includes('coding') || lower.includes('ui') || lower.includes('preview') || lower.includes('round 1')) {
+      setQuestionMode('code');
+      setIsAgentTyping(false);
+      setAgentMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        sender: 'agent',
+        text: "Switched to Round 1: Code & UI Sandbox. Implement your algorithmic or UI solution and launch the live sandbox!"
+      }]);
+      return;
+    }
     if (lower.includes('mcq') || lower.includes('quiz') || lower.includes('multiple choice')) {
       setQuestionMode('mcq');
       setIsAgentTyping(false);
@@ -820,7 +829,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
     }
   };
 
-  const currentMcq = mcqList[currentMcqIndex];
+  const currentMcq = mcqList[currentMcqIndex] || null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -921,7 +930,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
         )}
       </div>
 
-      {/* Sub-Bar: 4 Round Stages for Rehearsal Screen */}
+      {/* Sub-Bar: 3 Round Stages for Rehearsal Screen */}
       {workspaceTab === 'rehearsal' && (
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-neutral-900/60 border border-white/5 text-xs font-mono">
           <div className="flex items-center space-x-2">
@@ -934,17 +943,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                 }`}
               >
                 <Code2 className="w-3.5 h-3.5" />
-                <span>Round 1: Code Sandbox</span>
-              </button>
-
-              <button
-                onClick={() => setQuestionMode('system-visualizer')}
-                className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
-                  questionMode === 'system-visualizer' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
-                }`}
-              >
-                <Layout className="w-3.5 h-3.5" />
-                <span>Round 2: System Visualizer</span>
+                <span>Round 1: Code & UI Sandbox</span>
               </button>
 
               <button
@@ -954,26 +953,25 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Round 3: System MCQ</span>
+                <span>Round 2: Adaptive MCQ</span>
               </button>
 
               <button
-                onClick={() => setQuestionMode('system-reasoning')}
+                onClick={() => setQuestionMode('voice-debate')}
                 className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
-                  questionMode === 'system-reasoning' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
+                  questionMode === 'voice-debate' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Round 4: Socratic Defense</span>
+                <span>Round 3: Live Voice Debate</span>
               </button>
             </div>
           </div>
 
           <span className="text-neutral-500 text-[11px]">
-            {questionMode === 'code' && 'Invariants & Automated Tests'}
-            {questionMode === 'system-visualizer' && 'Architecture Trees & State Boundaries'}
-            {questionMode === 'mcq' && 'Architectural Tradeoff Decisions'}
-            {questionMode === 'system-reasoning' && 'Defense Against Concurrency & Split-Brain'}
+            {questionMode === 'code' && 'Invariants, Automated Tests & Side-by-Side UI Match'}
+            {questionMode === 'mcq' && 'Adaptive Architectural Tradeoffs (Role-Calibrated)'}
+            {questionMode === 'voice-debate' && 'Live Speech Defense & Concurrency Pushback'}
           </span>
         </div>
       )}
@@ -1357,6 +1355,12 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                         <span className="text-xs px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold font-mono">
                           {selectedProblem.category}
                         </span>
+                        {selectedProblem.isUiChallenge && (
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold font-mono uppercase flex items-center space-x-1">
+                            <Layout className="w-3 h-3 text-rose-400" />
+                            <span>UI / Frontend</span>
+                          </span>
+                        )}
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300 font-mono">
                           {track.company}
                         </span>
@@ -1416,14 +1420,28 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                                 </span>
                               )}
                               {generativeHtml && (
-                                <button
-                                  onClick={() => setIsVisualFullScreen(true)}
-                                  className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 font-bold text-[10px] uppercase transition shadow-sm"
-                                  title="Expand to Fullscreen"
-                                >
-                                  <Maximize2 className="w-3 h-3" />
-                                  <span>Fullscreen</span>
-                                </button>
+                                <div className="flex items-center space-x-1.5">
+                                  <button
+                                    onClick={handleSaveExplanation}
+                                    className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg border font-bold text-[10px] uppercase transition shadow-sm ${
+                                      savedExplSuccess 
+                                        ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50' 
+                                        : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border-amber-500/30'
+                                    }`}
+                                    title="Save to your Profile Vault"
+                                  >
+                                    <Star className={`w-3 h-3 ${savedExplSuccess ? 'fill-emerald-400 text-emerald-400' : 'fill-amber-400 text-amber-400'}`} />
+                                    <span>{savedExplSuccess ? 'Saved!' : 'Save'}</span>
+                                  </button>
+                                  <button
+                                    onClick={() => setIsVisualFullScreen(true)}
+                                    className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 font-bold text-[10px] uppercase transition shadow-sm"
+                                    title="Expand to Fullscreen"
+                                  >
+                                    <Maximize2 className="w-3 h-3" />
+                                    <span>Fullscreen</span>
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -1772,263 +1790,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
             )}
           </motion.div>
         )}
-
-        {/* MODE 2: SYSTEM VISUALIZER & ARCHITECTURE */}
-        {questionMode === 'system-visualizer' && (
-          <motion.div
-            key="system-visualizer-mode"
-            initial={{ opacity: 0, y: 12, filter: 'blur(8px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            className="space-y-6"
-          >
-            {/* Top Bar: Flow Selector & Architecture Badge */}
-            <div className="oled-panel rounded-2xl p-6 border border-white/10 bg-neutral-950/80 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center space-x-2.5">
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold font-mono">
-                    Production System Architecture Flow
-                  </span>
-                  <span className="text-xs text-neutral-400 font-mono">
-                    Pattern: {selectedUiChallenge.patternType}
-                  </span>
-                </div>
-                <h3 className="text-xl font-extrabold text-white tracking-tight mt-1">
-                  {selectedUiChallenge.title}
-                </h3>
-                <p className="text-xs text-neutral-400 mt-1 max-w-2xl leading-relaxed">
-                  {selectedUiChallenge.userStory}
-                </p>
-              </div>
-
-              {/* Challenge Selector */}
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-neutral-500 font-mono">Flow:</span>
-                <select
-                  value={selectedUiChallenge.id}
-                  onChange={(e) => {
-                    const found = UI_CHALLENGES.find(c => c.id === e.target.value);
-                    if (found) {
-                      setSelectedUiChallenge(found);
-                      setMobbinQuizAnswer(null);
-                      setMobbinQuizSubmitted(false);
-                    }
-                  }}
-                  className="bg-neutral-900 border border-white/15 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none"
-                >
-                  {UI_CHALLENGES.map(c => (
-                    <option key={c.id} value={c.id}>{c.company} — {c.patternType}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Sub-Navigation Tabs */}
-            <div className="flex items-center space-x-2 border-b border-white/10 pb-2">
-              <button
-                onClick={() => setActiveUiSection('hierarchy')}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold font-mono transition flex items-center space-x-2 ${
-                  activeUiSection === 'hierarchy' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Box className="w-3.5 h-3.5" />
-                <span>Component Hierarchy</span>
-              </button>
-
-              <button
-                onClick={() => setActiveUiSection('state')}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold font-mono transition flex items-center space-x-2 ${
-                  activeUiSection === 'state' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Cpu className="w-3.5 h-3.5" />
-                <span>State Boundaries</span>
-              </button>
-
-              <button
-                onClick={() => setActiveUiSection('edge-cases')}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold font-mono transition flex items-center space-x-2 ${
-                  activeUiSection === 'edge-cases' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Defensive Edge-Cases</span>
-              </button>
-
-              <button
-                onClick={() => setActiveUiSection('quiz')}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold font-mono transition flex items-center space-x-2 ${
-                  activeUiSection === 'quiz' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>System Architecture Quiz</span>
-              </button>
-            </div>
-
-            {/* Section 1: Component Tree */}
-            {activeUiSection === 'hierarchy' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {selectedUiChallenge.recommendedComponentTree.map((comp) => (
-                  <div key={comp.id} className="oled-panel rounded-2xl p-5 border border-white/10 bg-neutral-950/70 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-white text-sm">
-                        &lt;{comp.name} /&gt;
-                      </span>
-                      <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold">
-                        {comp.type}
-                      </span>
-                    </div>
-                    <p className="text-xs text-neutral-300 leading-relaxed">{comp.description}</p>
-                    
-                    {comp.stateUsed && comp.stateUsed.length > 0 && (
-                      <div className="pt-2 border-t border-white/5">
-                        <span className="text-[10px] font-mono text-neutral-500 uppercase block mb-1">State Subscriptions:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {comp.stateUsed.map((s, i) => (
-                            <span key={i} className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-neutral-300">
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Section 2: State Boundaries */}
-            {activeUiSection === 'state' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="oled-panel rounded-2xl p-5 border border-white/10 bg-neutral-950/70 space-y-3">
-                  <h4 className="font-bold text-white text-xs font-mono uppercase text-sky-400">1. Local Component State</h4>
-                  <ul className="text-xs text-neutral-300 space-y-2">
-                    {selectedUiChallenge.stateArchitectureGuide.localState.map((st, i) => (
-                      <li key={i} className="font-mono text-[11px] bg-white/5 p-2 rounded-lg leading-relaxed">• {st}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="oled-panel rounded-2xl p-5 border border-white/10 bg-neutral-950/70 space-y-3">
-                  <h4 className="font-bold text-white text-xs font-mono uppercase text-rose-400">2. Global Store (Zustand/Redux)</h4>
-                  <ul className="text-xs text-neutral-300 space-y-2">
-                    {selectedUiChallenge.stateArchitectureGuide.globalState.map((st, i) => (
-                      <li key={i} className="font-mono text-[11px] bg-white/5 p-2 rounded-lg leading-relaxed">• {st}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="oled-panel rounded-2xl p-5 border border-white/10 bg-neutral-950/70 space-y-3">
-                  <h4 className="font-bold text-white text-xs font-mono uppercase text-emerald-400">3. Server Cache (TanStack Query)</h4>
-                  <ul className="text-xs text-neutral-300 space-y-2">
-                    {selectedUiChallenge.stateArchitectureGuide.serverCacheState.map((st, i) => (
-                      <li key={i} className="font-mono text-[11px] bg-white/5 p-2 rounded-lg leading-relaxed">• {st}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {/* Section 3: Defensive Edge Cases */}
-            {activeUiSection === 'edge-cases' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {selectedUiChallenge.edgeCases.map((ec, i) => (
-                  <div key={i} className="oled-panel rounded-2xl p-5 border border-white/10 bg-neutral-950/70 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white">{ec.scenario}</span>
-                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/5 text-neutral-400">
-                        {ec.category}
-                      </span>
-                    </div>
-                    <p className="text-xs text-neutral-300 font-mono leading-relaxed bg-black/60 p-3 rounded-xl border border-white/5">
-                      <strong className="text-rose-400 block mb-0.5">Defensive Strategy:</strong>
-                      {ec.expectedBehavior}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Section 4: Mobbin Quiz */}
-            {activeUiSection === 'quiz' && (
-              <div className="max-w-2xl mx-auto oled-panel rounded-3xl p-8 border border-white/10 space-y-6">
-                {selectedUiChallenge.interactiveQuiz && selectedUiChallenge.interactiveQuiz.length > 0 ? (
-                  (() => {
-                    const quiz = selectedUiChallenge.interactiveQuiz[0];
-                    return (
-                      <div className="space-y-4">
-                        <span className="text-xs font-mono text-rose-400 font-bold uppercase">
-                          System Design Pattern Validation
-                        </span>
-                        <h4 className="text-base font-bold text-white leading-relaxed">{quiz.question}</h4>
-
-                        <div className="space-y-2.5 pt-2">
-                          {quiz.options.map((opt, i) => {
-                            const isSelected = mobbinQuizAnswer === i;
-                            const isCorrect = quiz.correctIndex === i;
-                            let style = 'bg-neutral-900 border-white/10 text-neutral-200 hover:border-white/20';
-                            if (mobbinQuizSubmitted) {
-                              if (isCorrect) style = 'bg-emerald-950/40 border-emerald-500 text-emerald-200 font-bold';
-                              else if (isSelected && !isCorrect) style = 'bg-rose-950/40 border-rose-500 text-rose-200';
-                            } else if (isSelected) {
-                              style = 'bg-rose-600/20 border-rose-500 text-white font-semibold';
-                            }
-
-                            return (
-                              <div
-                                key={i}
-                                onClick={() => !mobbinQuizSubmitted && setMobbinQuizAnswer(i)}
-                                className={`p-4 rounded-2xl border text-xs cursor-pointer transition flex items-center justify-between ${style}`}
-                              >
-                                <span>{opt}</span>
-                                {mobbinQuizSubmitted && isCorrect && <Check className="w-4 h-4 text-emerald-400" />}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {mobbinQuizSubmitted && (
-                          <div className="p-4 rounded-xl bg-neutral-900 border border-white/10 text-xs text-neutral-300 leading-relaxed font-mono">
-                            <strong className="text-rose-400 block mb-1">Architecture Insight:</strong>
-                            {quiz.explanation}
-                          </div>
-                        )}
-
-                        <div className="pt-2">
-                          {!mobbinQuizSubmitted ? (
-                            <button
-                              onClick={() => mobbinQuizAnswer !== null && setMobbinQuizSubmitted(true)}
-                              disabled={mobbinQuizAnswer === null}
-                              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs transition"
-                            >
-                              Verify UI Architecture
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setMobbinQuizAnswer(null);
-                                setMobbinQuizSubmitted(false);
-                              }}
-                              className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition"
-                            >
-                              Reset Quiz
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <p className="text-xs text-neutral-400 font-mono">No quiz available for this flow.</p>
-                )}
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* MODE 3: ARCHITECTURE & INVARIANT MCQ */}
+        {/* ROUND 2: ADAPTIVE ROLE-CALIBRATED ARCHITECTURE MCQ */}
         {questionMode === 'mcq' && (
           <motion.div
             key="mcq-mode"
@@ -2038,143 +1800,175 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
             className="max-w-3xl mx-auto oled-panel rounded-3xl p-8 border border-white/10 space-y-6"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <span className="text-xs font-mono text-rose-400 uppercase font-bold tracking-wider">
-                Question {currentMcqIndex + 1} of {mcqList.length}
-              </span>
-              <span className="text-xs text-neutral-400 font-mono">Engineering Reasoning</span>
-            </div>
+            {/* Top Bar with Difficulty Selector & Seniority Calibrator */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
+              <div className="space-y-0.5">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-mono text-rose-400 uppercase font-bold tracking-wider">
+                    Round 2: Adaptive Architecture MCQ
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300 font-mono">
+                    {profile?.seniority || 'Mid-Level'} Seniority Calibrated
+                  </span>
+                </div>
+                <div className="text-xs text-neutral-400 font-mono">
+                  {mcqList.length > 0 ? `Question ${currentMcqIndex + 1} of ${mcqList.length}` : 'Calibrating Questions...'}
+                </div>
+              </div>
 
-            <h3 className="text-base font-bold text-white leading-relaxed">
-              {currentMcq.question}
-            </h3>
-
-            {/* Options */}
-            <div className="space-y-3">
-              {currentMcq.options.map((opt, i) => {
-                const isSelected = selectedMcqAnswer === i;
-                const isCorrect = currentMcq.correctIndex === i;
-
-                let style = 'bg-neutral-900 border-white/10 text-neutral-200 hover:border-white/20';
-                if (mcqSubmitted) {
-                  if (isCorrect) style = 'bg-emerald-950/40 border-emerald-500 text-emerald-200 font-bold';
-                  else if (isSelected && !isCorrect) style = 'bg-rose-950/40 border-rose-500 text-rose-200';
-                } else if (isSelected) {
-                  style = 'bg-rose-600/20 border-rose-500 text-white font-semibold';
-                }
-
-                return (
-                  <div
-                    key={i}
-                    onClick={() => !mcqSubmitted && setSelectedMcqAnswer(i)}
-                    className={`p-4 rounded-2xl border text-xs cursor-pointer transition flex items-center justify-between ${style}`}
+              {/* Difficulty Switcher */}
+              <div className="flex items-center space-x-1.5 p-1 rounded-xl bg-black/60 border border-white/10 text-xs font-mono">
+                <span className="text-[10px] text-neutral-500 uppercase px-1 font-bold">Difficulty:</span>
+                {(['Easy', 'Medium', 'Hard'] as const).map(diff => (
+                  <button
+                    key={diff}
+                    onClick={() => loadAdaptiveMcqs(diff)}
+                    disabled={isLoadingMcqs}
+                    className={`px-2.5 py-1 rounded-lg transition text-[11px] ${
+                      mcqDifficulty === diff 
+                        ? 'bg-rose-600 text-white font-bold' 
+                        : 'text-neutral-400 hover:text-white disabled:opacity-40'
+                    }`}
                   >
-                    <span>{opt}</span>
-                    {mcqSubmitted && isCorrect && <Check className="w-4 h-4 text-emerald-400" />}
-                  </div>
-                );
-              })}
+                    {diff}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Explanation */}
-            {mcqSubmitted && (
-              <div className="p-4 rounded-xl bg-neutral-900 border border-white/10 text-xs text-neutral-300 leading-relaxed font-mono">
-                <strong className="text-rose-400 block mb-1">Architectural Insight:</strong>
-                {currentMcq.explanation}
+            {isLoadingMcqs ? (
+              <div className="py-16 flex flex-col items-center justify-center space-y-3 font-mono text-xs text-neutral-400">
+                <div className="w-8 h-8 rounded-full border-2 border-rose-500 border-t-transparent animate-spin" />
+                <span>Gemini 3.8 Flash is calibrating {mcqDifficulty} questions for your {profile?.seniority || 'Mid-Level'} track...</span>
+              </div>
+            ) : currentMcq ? (
+              <>
+                <div className="flex items-center justify-between text-xs font-mono text-neutral-500">
+                  <span>Category: <strong className="text-neutral-300">{currentMcq.category || 'Architecture Tradeoff'}</strong></span>
+                  <span className="text-rose-400 font-bold">{currentMcq.difficulty || mcqDifficulty}</span>
+                </div>
+
+                <h3 className="text-base font-bold text-white leading-relaxed">
+                  {currentMcq.question}
+                </h3>
+
+                {/* Options */}
+                <div className="space-y-3">
+                  {currentMcq.options.map((opt, i) => {
+                    const isSelected = selectedMcqAnswer === i;
+                    const isCorrect = currentMcq.correctIndex === i;
+
+                    let style = 'bg-neutral-900 border-white/10 text-neutral-200 hover:border-white/20';
+                    if (mcqSubmitted) {
+                      if (isCorrect) style = 'bg-emerald-950/40 border-emerald-500 text-emerald-200 font-bold';
+                      else if (isSelected && !isCorrect) style = 'bg-rose-950/40 border-rose-500 text-rose-200';
+                    } else if (isSelected) {
+                      style = 'bg-rose-600/20 border-rose-500 text-white font-semibold';
+                    }
+
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => !mcqSubmitted && setSelectedMcqAnswer(i)}
+                        className={`p-4 rounded-2xl border text-xs cursor-pointer transition flex items-center justify-between ${style}`}
+                      >
+                        <span className="pr-3 leading-relaxed">{opt}</span>
+                        {mcqSubmitted && isCorrect && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Socratic Explanation */}
+                {mcqSubmitted && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-xl bg-neutral-900 border border-white/10 text-xs text-neutral-300 leading-relaxed font-mono space-y-1"
+                  >
+                    <strong className="text-rose-400 block font-bold">Architectural Invariant Breakdown:</strong>
+                    <p>{currentMcq.explanation}</p>
+                  </motion.div>
+                )}
+
+                {/* Bottom Actions */}
+                <div className="pt-2 flex items-center justify-between">
+                  <div className="text-[11px] font-mono text-neutral-500">
+                    {answeredMcqCount > 0 && `Score: ${Math.round((correctMcqCount / answeredMcqCount) * 100)}% (${correctMcqCount}/${answeredMcqCount} Correct)`}
+                  </div>
+
+                  {!mcqSubmitted ? (
+                    <button
+                      onClick={() => {
+                        if (selectedMcqAnswer === null) return;
+                        setMcqSubmitted(true);
+                        const isCorrect = selectedMcqAnswer === currentMcq.correctIndex;
+                        const newAnswered = answeredMcqCount + 1;
+                        const newCorrect = isCorrect ? correctMcqCount + 1 : correctMcqCount;
+                        setAnsweredMcqCount(newAnswered);
+                        if (isCorrect) {
+                          setCorrectMcqCount(newCorrect);
+                        }
+                        setRound2Score(Math.round((newCorrect / newAnswered) * 100));
+                      }}
+                      disabled={selectedMcqAnswer === null}
+                      className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs transition"
+                    >
+                      Verify Answer
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (currentMcqIndex + 1 < mcqList.length) {
+                          setCurrentMcqIndex(prev => prev + 1);
+                        } else {
+                          loadAdaptiveMcqs(mcqDifficulty);
+                        }
+                        setSelectedMcqAnswer(null);
+                        setMcqSubmitted(false);
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition"
+                    >
+                      {currentMcqIndex + 1 < mcqList.length ? 'Next Adaptive MCQ →' : 'Generate New Batch →'}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="py-12 text-center text-xs text-neutral-400 font-mono space-y-3">
+                <p>No questions currently calibrated.</p>
+                <button
+                  onClick={() => loadAdaptiveMcqs(mcqDifficulty)}
+                  className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold"
+                >
+                  Fetch Adaptive Questions
+                </button>
               </div>
             )}
-
-            {/* Bottom Actions */}
-            <div className="pt-2 flex items-center justify-between">
-              {!mcqSubmitted ? (
-                <button
-                  onClick={() => selectedMcqAnswer !== null && setMcqSubmitted(true)}
-                  disabled={selectedMcqAnswer === null}
-                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs transition"
-                >
-                  Verify Answer
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    setCurrentMcqIndex(prev => (prev + 1) % mcqList.length);
-                    setSelectedMcqAnswer(null);
-                    setMcqSubmitted(false);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition"
-                >
-                  Next Architecture MCQ
-                </button>
-              )}
-            </div>
           </motion.div>
         )}
 
-        {/* MODE 4: SYSTEM REASONING & DEFENSE */}
-        {questionMode === 'system-reasoning' && (
+        {/* ROUND 3: LIVE VOICE DEBATE */}
+        {questionMode === 'voice-debate' && (
           <motion.div
-            key="reasoning-mode"
+            key="voice-debate-mode"
             initial={{ opacity: 0, y: 12, filter: 'blur(8px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            className="max-w-3xl mx-auto oled-panel rounded-3xl p-8 border border-white/10 space-y-6"
+            className="w-full"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span className="text-xs font-mono text-rose-400 uppercase font-bold tracking-wider">
-                  System Reasoning & Defense
-                </span>
-                <h3 className="text-base font-bold text-white mt-1 leading-relaxed">
-                  {reasoningPrompt}
-                </h3>
-              </div>
-
-              {/* Evaluator Engine Switcher: Gemini vs Anakin */}
-              <div className="flex items-center space-x-1.5 p-1 rounded-xl bg-black/60 border border-white/10 text-[11px] font-mono flex-shrink-0">
-                <button
-                  onClick={() => setEvaluatorEngine('gemini')}
-                  className={`px-2.5 py-1 rounded-lg transition ${
-                    evaluatorEngine === 'gemini' ? 'bg-rose-600 text-white font-bold' : 'text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  Gemini
-                </button>
-                <button
-                  onClick={() => setEvaluatorEngine('anakin')}
-                  className={`px-2.5 py-1 rounded-lg transition ${
-                    evaluatorEngine === 'anakin' ? 'bg-rose-600 text-white font-bold' : 'text-neutral-400 hover:text-white'
-                  }`}
-                >
-                  Anakin.ai
-                </button>
-              </div>
-            </div>
-
-            <textarea
-              value={reasoningAnswer}
-              onChange={(e) => setReasoningAnswer(e.target.value)}
-              placeholder="Outline your invariants, retry semantics, mutex boundaries, and storage choices..."
-              className="w-full h-44 bg-black border border-white/15 rounded-2xl p-4 text-xs font-mono text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-rose-500 transition leading-relaxed"
+            <VoiceDebateRoom
+              role={track.role || 'Software Engineer'}
+              company={track.company}
+              problemTitle={selectedProblem.title}
+              problemCategory={selectedProblem.category}
+              problemCode={code}
+              existingScore={round3Score}
+              onConcludeDebate={(evaluationResult) => {
+                setRound3Score(evaluationResult.round3Score);
+              }}
             />
-
-            {reasoningFeedback && (
-              <div className="p-4 rounded-2xl bg-neutral-900 border border-rose-500/30 text-xs text-neutral-200 space-y-1">
-                <span className="text-rose-400 font-bold block font-mono">Principal Evaluation:</span>
-                <p className="leading-relaxed">{reasoningFeedback}</p>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono text-neutral-500">Evaluated against {track.company} senior invariants</span>
-              <button
-                onClick={handleEvaluateReasoning}
-                disabled={!reasoningAnswer.trim() || isEvaluatingReasoning}
-                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs transition"
-              >
-                {isEvaluatingReasoning ? 'Grading...' : 'Submit Defense to AI'}
-              </button>
-            </div>
           </motion.div>
         )}
 
@@ -2338,6 +2132,8 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
         outcome={testRun.outcome}
         onReRun={handleRunCode}
         title={selectedProblem.title}
+        referenceUiCode={selectedProblem.referenceUiCode}
+        isUiChallenge={selectedProblem.isUiChallenge}
       />
 
       <RaiseHandModal
@@ -2430,18 +2226,34 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 font-mono text-center">
-                <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
-                  <div className="text-[10px] text-neutral-400 uppercase">Accuracy</div>
-                  <div className="text-2xl font-black text-emerald-400 mt-1">{submittedRecord.scorePercentage}%</div>
+              {/* 3-Round Composite Score Breakdown */}
+              <div className="grid grid-cols-4 gap-2 font-mono text-center">
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40">
+                  <div className="text-[9px] text-emerald-300 uppercase tracking-wider font-bold">Total Score</div>
+                  <div className="text-2xl font-black text-emerald-400 mt-1">{submittedRecord.totalScore ?? submittedRecord.scorePercentage}/100</div>
                 </div>
                 <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
-                  <div className="text-[10px] text-neutral-400 uppercase">Solved</div>
-                  <div className="text-2xl font-black text-white mt-1">{submittedRecord.solvedQuestions}/{submittedRecord.totalQuestions}</div>
+                  <div className="text-[9px] text-neutral-400 uppercase tracking-wider">R1: Code & UI</div>
+                  <div className="text-lg font-black text-rose-400 mt-1">{submittedRecord.round1Score ?? 0}%</div>
                 </div>
                 <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
-                  <div className="text-[10px] text-neutral-400 uppercase">Time Spent</div>
-                  <div className="text-2xl font-black text-amber-400 mt-1">{Math.floor(submittedRecord.durationSeconds / 60)}m {submittedRecord.durationSeconds % 60}s</div>
+                  <div className="text-[9px] text-neutral-400 uppercase tracking-wider">R2: MCQ</div>
+                  <div className="text-lg font-black text-blue-400 mt-1">{submittedRecord.round2Score ?? 0}%</div>
+                </div>
+                <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
+                  <div className="text-[9px] text-neutral-400 uppercase tracking-wider">R3: Debate</div>
+                  <div className="text-lg font-black text-purple-400 mt-1">{submittedRecord.round3Score ?? 0}%</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 font-mono text-center">
+                <div className="p-2.5 rounded-xl bg-neutral-900/60 border border-white/5">
+                  <div className="text-[10px] text-neutral-400 uppercase">Code Solved</div>
+                  <div className="text-base font-bold text-white mt-0.5">{submittedRecord.solvedQuestions}/{submittedRecord.totalQuestions}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-neutral-900/60 border border-white/5">
+                  <div className="text-[10px] text-neutral-400 uppercase">Total Time Spent</div>
+                  <div className="text-base font-bold text-amber-400 mt-0.5">{Math.floor(submittedRecord.durationSeconds / 60)}m {submittedRecord.durationSeconds % 60}s</div>
                 </div>
               </div>
 
@@ -2519,6 +2331,18 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
               </div>
 
               <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleSaveExplanation}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl border text-xs font-mono font-bold transition shadow-sm ${
+                    savedExplSuccess
+                      ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50'
+                      : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border-amber-500/30'
+                  }`}
+                  title="Save Explanation to Profile Vault"
+                >
+                  <Star className={`w-3.5 h-3.5 ${savedExplSuccess ? 'fill-emerald-400 text-emerald-400' : 'fill-amber-400 text-amber-400'}`} />
+                  <span>{savedExplSuccess ? 'Saved to Vault!' : 'Save Explanation'}</span>
+                </button>
                 <button
                   onClick={() => setIsVisualFullScreen(false)}
                   className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-white/10 text-xs font-mono transition"

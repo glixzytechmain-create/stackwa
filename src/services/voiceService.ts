@@ -26,10 +26,30 @@ class VoiceService {
     this.listeners.forEach(cb => cb(state));
   }
 
+  private preferredGender: 'male' | 'female' = 'female';
+
+  public getVoiceGender(): 'male' | 'female' {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('stackwa_preferred_voice_gender');
+      if (saved === 'male' || saved === 'female') {
+        this.preferredGender = saved;
+      }
+    }
+    return this.preferredGender;
+  }
+
+  public setVoiceGender(gender: 'male' | 'female'): void {
+    this.preferredGender = gender;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('stackwa_preferred_voice_gender', gender);
+    }
+  }
+
   // Text-To-Speech (TTS)
   public speak(
     text: string, 
     options?: {
+      gender?: 'male' | 'female';
       rate?: number;
       pitch?: number;
       onEnd?: () => void;
@@ -58,18 +78,34 @@ class VoiceService {
       return;
     }
 
+    const targetGender = options?.gender || this.getVoiceGender();
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = options?.rate ?? 1.05;
-    utterance.pitch = options?.pitch ?? 1.0;
+    utterance.pitch = options?.pitch ?? (targetGender === 'male' ? 0.95 : 1.12);
 
-    // Pick a natural English voice if available
     const voices = this.synth.getVoices();
-    const preferredVoice = voices.find(v => 
-      (v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Premium')))
-    ) || voices.find(v => v.lang.startsWith('en'));
+    let selectedVoice: SpeechSynthesisVoice | null = null;
 
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
+    if (targetGender === 'male') {
+      // Find fixed natural male voice
+      selectedVoice = voices.find(v => 
+        v.lang.startsWith('en') && 
+        (v.name.includes('Daniel') || v.name.includes('Alex') || v.name.includes('Fred') || v.name.includes('David') || v.name.includes('Male'))
+      ) || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google'))) || null;
+    } else {
+      // Find fixed natural female voice
+      selectedVoice = voices.find(v => 
+        v.lang.startsWith('en') && 
+        (v.name.includes('Samantha') || v.name.includes('Victoria') || v.name.includes('Karen') || v.name.includes('Zira') || v.name.includes('Female'))
+      ) || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google'))) || null;
+    }
+
+    if (!selectedVoice) {
+      selectedVoice = voices.find(v => v.lang.startsWith('en')) || null;
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
     }
 
     utterance.onstart = () => {

@@ -42,6 +42,20 @@ export interface DsaProblem {
   };
   scrimbaEmbedId?: string;
   hints: ProgressiveHint[];
+  isUiChallenge?: boolean;
+  referenceUiCode?: string;
+}
+
+export type QuestionMode = 'code' | 'mcq' | 'voice-debate';
+
+export interface SavedVisualExplanation {
+  id: string;
+  problemId: string;
+  problemTitle: string;
+  category: string;
+  company: string;
+  htmlContent: string;
+  savedAt: string;
 }
 
 export interface UiComponentItem {
@@ -125,6 +139,10 @@ export interface TestSessionRecord {
   durationSeconds: number;
   completedAt: string;
   questionTitles: string[];
+  round1Score?: number;
+  round2Score?: number;
+  round3Score?: number;
+  totalScore?: number;
 }
 
 export interface UserInterviewProfile {
@@ -138,6 +156,7 @@ export interface UserInterviewProfile {
   onboardingCompleted: boolean;
   isGeneralPractice?: boolean;
   testHistory?: TestSessionRecord[];
+  savedExplanations?: SavedVisualExplanation[];
 }
 
 export interface DayPlan {

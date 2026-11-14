@@ -16,7 +16,7 @@ import { SettingsView } from './components/SettingsView';
 import { SponsorsView } from './components/SponsorsView';
 import { ShortcutsView } from './components/ShortcutsView';
 import { Building2, Sparkles, Code2 } from 'lucide-react';
-import { TabType, UserInterviewProfile, DayPlan, DsaProblem, TestSessionRecord } from './types';
+import { TabType, UserInterviewProfile, DayPlan, DsaProblem, TestSessionRecord, SavedVisualExplanation } from './types';
 import { DSA_PROBLEMS } from './data/dsaProblems';
 import { UI_CHALLENGES } from './data/uiFlows';
 import { 
@@ -114,7 +114,7 @@ const DEFAULT_GOALS: InterviewTrack[] = [
     intensity: '30m',
     difficulty: 'Hard',
     focusTopics: ['Sliding Window Limiter', 'Idempotent Ledger', 'LRU O(1) Eviction'],
-    roundsCount: 4,
+    roundsCount: 3,
     completedRounds: 1,
     readinessScore: 78,
     accentColor: 'rose'
@@ -218,7 +218,7 @@ export const App: React.FC = () => {
                   intensity: '45m',
                   difficulty: 'FAANG-Caliber',
                   focusTopics: parsed.focusAreas && parsed.focusAreas.length > 0 ? parsed.focusAreas : ['Sliding Window', 'State Machines', 'Edge Cases'],
-                  roundsCount: 4,
+                  roundsCount: 3,
                   completedRounds: 0,
                   readinessScore: 82,
                   accentColor: 'rose'
@@ -278,7 +278,7 @@ export const App: React.FC = () => {
         intensity: '45m',
         difficulty: 'FAANG-Caliber',
         focusTopics: newProfile.focusAreas && newProfile.focusAreas.length > 0 ? newProfile.focusAreas : ['Sliding Window', 'State Machines', 'Edge Cases'],
-        roundsCount: 4,
+        roundsCount: 3,
         completedRounds: 0,
         readinessScore: 82,
         accentColor: 'rose'
@@ -328,6 +328,24 @@ export const App: React.FC = () => {
     const updatedProfile: UserInterviewProfile = {
       ...profile,
       testHistory: updatedHistory
+    };
+    setProfile(updatedProfile);
+    localStorage.setItem('stackwa_interview_profile', JSON.stringify(updatedProfile));
+
+    if (user) {
+      saveUserProgress(user.uid, {
+        profile: updatedProfile
+      });
+    }
+  };
+
+  const handleSaveExplanation = (explanation: SavedVisualExplanation) => {
+    const existing = profile.savedExplanations || [];
+    const filtered = existing.filter(e => e.problemId !== explanation.problemId);
+    const updatedExplanations = [explanation, ...filtered];
+    const updatedProfile: UserInterviewProfile = {
+      ...profile,
+      savedExplanations: updatedExplanations
     };
     setProfile(updatedProfile);
     localStorage.setItem('stackwa_interview_profile', JSON.stringify(updatedProfile));
@@ -408,6 +426,7 @@ export const App: React.FC = () => {
                       onToggleDay={handleToggleDay}
                       onOpenSettings={() => setIsOnboardingOpen(true)}
                       onSaveTestRecord={handleSaveTestRecord}
+                      onSaveExplanation={handleSaveExplanation}
                       solvedCount={solvedProblemIds.length}
                       completedFlowsCount={completedFlowIds.length}
                       streakDays={streakDays}
