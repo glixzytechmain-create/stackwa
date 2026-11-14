@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExecutionOutcome, runPythonUiCode, ProblemTestCase } from '../services/codeExecutionService';
-import { evaluateUiSimilarity, UiSimilarityResult } from '../services/aiService';
+import { generateAiExecutedUiComparison, UiSimilarityResult } from '../services/aiService';
 
 interface LiveUiPreviewModalProps {
   isOpen: boolean;
@@ -27,6 +27,8 @@ interface LiveUiPreviewModalProps {
   referenceUiCode?: string;
   isUiChallenge?: boolean;
   testCases?: ProblemTestCase[];
+  solutionCode?: string;
+  description?: string;
 }
 
 // Helper to replace function in source code respecting nested braces
@@ -164,7 +166,9 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
   title,
   referenceUiCode,
   isUiChallenge = false,
-  testCases = []
+  testCases = [],
+  solutionCode = '',
+  description = ''
 }) => {
   // Auto-detect Python vs JavaScript to prevent mismatch syntax crashes
   const isPythonPattern = /^\s*(def\s+|import\s+|from\s+|class\s+|#|elif\s+|lambda\s*:)/m.test(code);
@@ -566,7 +570,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
       candidateSnippet = injectCandidateCodeIntoUi(effectiveReferenceCode, code, functionName);
     }
 
-    // Compile candidate code
+    // 1. Client-Side Instant Pre-render (zero delay)
     const candidateHtml = buildIframeHtml(candidateSnippet, functionName, false, testCases);
     setSrcDoc(candidateHtml);
 
@@ -578,19 +582,82 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
     }
     setIsCompiling(false);
 
-    // Evaluate similarity
+    // 2. Gemini Live Execution Engine & Real Similarity Evaluation
     if (previewMode === 'side-by-side' || isUiChallenge) {
       setIsEvaluatingSimilarity(true);
-      evaluateUiSimilarity(code, effectiveReferenceCode, title).then(res => {
-        if (isMounted) {
-          setSimilarity(res);
-          setIsEvaluatingSimilarity(false);
+      generateAiExecutedUiComparison({
+        candidateCode: code,
+        solutionCode: solutionCode || effectiveReferenceCode,
+        referenceUiCode: effectiveReferenceCode,
+        problemTitle: title,
+        problemDescription: description,
+        functionName,
+        testCases,
+        isUiChallenge
+      }).then(aiRes => {
+        if (!isMounted) return;
+        if (aiRes.candidateHtml && (aiRes.candidateHtml.includes('<!DOCTYPE') || aiRes.candidateHtml.includes('<html'))) {
+          setSrcDoc(aiRes.candidateHtml);
         }
+        if (aiRes.referenceHtml && (aiRes.referenceHtml.includes('<!DOCTYPE') || aiRes.referenceHtml.includes('<html'))) {
+          setReferenceSrcDoc(aiRes.referenceHtml);
+        }
+        if (aiRes.similarity) {
+          setSimilarity(aiRes.similarity);
+        }
+        setIsEvaluatingSimilarity(false);
+      }).catch(err => {
+        console.warn("Gemini UI comparison engine error:", err);
+        if (isMounted) setIsEvaluatingSimilarity(false);
       });
     }
 
     return () => { isMounted = false; };
-  }, [isOpen, code, functionName, effectiveLanguage, referenceUiCode, previewMode, title, isUiChallenge, testCases]);
+  }, [isOpen, code, functionName, effectiveLanguage, referenceUiCode, previewMode, title, isUiChallenge, testCases, solutionCode, description]);
+
+  const handleManualRunGemini = () => {
+    setIsEvaluatingSimilarity(true);
+    const effectiveReferenceCode = referenceUiCode || (isUiChallenge ? `
+      function Solution() {
+        return (
+          <div className="p-6 rounded-3xl bg-neutral-900 border border-white/10 text-white max-w-sm space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <span className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">Target Reference</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            </div>
+            <h4 className="font-bold text-base tracking-tight">${title}</h4>
+            <p className="text-xs text-neutral-400 leading-relaxed">Standard responsive layout with accessible state transitions and dark-mode styling.</p>
+            <button className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 font-semibold text-xs text-white transition">Action Trigger</button>
+          </div>
+        );
+      }
+    ` : '');
+
+    generateAiExecutedUiComparison({
+      candidateCode: code,
+      solutionCode: solutionCode || effectiveReferenceCode,
+      referenceUiCode: effectiveReferenceCode,
+      problemTitle: title,
+      problemDescription: description,
+      functionName,
+      testCases,
+      isUiChallenge
+    }).then(aiRes => {
+      if (aiRes.candidateHtml && (aiRes.candidateHtml.includes('<!DOCTYPE') || aiRes.candidateHtml.includes('<html'))) {
+        setSrcDoc(aiRes.candidateHtml);
+      }
+      if (aiRes.referenceHtml && (aiRes.referenceHtml.includes('<!DOCTYPE') || aiRes.referenceHtml.includes('<html'))) {
+        setReferenceSrcDoc(aiRes.referenceHtml);
+      }
+      if (aiRes.similarity) {
+        setSimilarity(aiRes.similarity);
+      }
+      setIsEvaluatingSimilarity(false);
+    }).catch(err => {
+      console.warn("Manual Gemini run error:", err);
+      setIsEvaluatingSimilarity(false);
+    });
+  };
 
   if (!isOpen) return null;
 
@@ -675,6 +742,19 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                 </div>
               )}
 
+              {/* Manual Re-Run with Gemini Button */}
+              {activeTab === 'ui-sandbox' && (
+                <button
+                  onClick={handleManualRunGemini}
+                  disabled={isEvaluatingSimilarity}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-mono font-bold transition disabled:opacity-50"
+                  title="Execute candidate code with Gemini and re-evaluate similarity"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 ${isEvaluatingSimilarity ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Re-Run with Gemini</span>
+                </button>
+              )}
+
               <button
                 onClick={onReRun}
                 className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 transition"
@@ -700,7 +780,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                 {isEvaluatingSimilarity ? (
                   <div className="flex items-center space-x-1.5 text-rose-400">
                     <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                    <span>Analyzing DOM & Visual Similarity...</span>
+                    <span>Gemini is running candidate code & judging real similarity...</span>
                   </div>
                 ) : similarity ? (
                   <div className="flex items-center space-x-2">
@@ -711,14 +791,14 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                           ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
                           : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
                     }`}>
-                      {similarity.scorePercentage}% Visual Match
+                      {similarity.scorePercentage}% Real Match
                     </span>
                     <span className="text-neutral-300 hidden md:inline truncate max-w-md">
                       {similarity.feedback}
                     </span>
                   </div>
                 ) : (
-                  <span className="text-neutral-500">Live DOM reconciliation active</span>
+                  <span className="text-neutral-500">Live AI parity active</span>
                 )}
               </div>
 

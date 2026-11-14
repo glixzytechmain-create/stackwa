@@ -2135,6 +2135,8 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
         referenceUiCode={selectedProblem.referenceUiCode}
         isUiChallenge={selectedProblem.isUiChallenge}
         testCases={selectedProblem.testCases}
+        solutionCode={selectedProblem.solutionCode?.[language] || selectedProblem.solutionCode?.javascript}
+        description={selectedProblem.description}
       />
 
       <RaiseHandModal
