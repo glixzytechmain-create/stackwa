@@ -20,7 +20,12 @@ import {
   Calendar,
   BarChart3,
   Terminal,
-  Zap
+  Zap,
+  Wrench,
+  RotateCcw,
+  Sliders,
+  ChevronRight,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
@@ -29,7 +34,14 @@ import { InterviewTrack, GoalSectionTab } from './InterviewCard';
 import { DSA_PROBLEMS } from '../data/dsaProblems';
 import { UI_CHALLENGES } from '../data/uiFlows';
 import { executeCodeStrict, ExecutionOutcome } from '../services/codeExecutionService';
-import { askAiCoach, generateScenarioDsaProblem } from '../services/aiService';
+import { 
+  askAiCoach, 
+  generateScenarioDsaProblem, 
+  generateStepByStepFix, 
+  getAiSuggestedSessionBlueprint, 
+  StepByStepFix, 
+  SessionBlueprint 
+} from '../services/aiService';
 import { sendAnakinChatMessage } from '../services/anakinService';
 import { ScrimbaPlayer } from './ScrimbaPlayer';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
@@ -104,6 +116,36 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   streakDays = 1
 }) => {
   const problems = [...customProblems, ...DSA_PROBLEMS];
+  // Session Launcher & Batch Management State (Round 1: Code Sandbox)
+  const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
+  const [activeSessionMode, setActiveSessionMode] = useState<'ai-suggested' | 'drills' | 'long' | 'custom'>('ai-suggested');
+  const [batchQuestions, setBatchQuestions] = useState<DsaProblem[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [batchNumber, setBatchNumber] = useState<number>(1);
+  const [isLaunchingSession, setIsLaunchingSession] = useState<boolean>(false);
+  const [solvedQuestionIds, setSolvedQuestionIds] = useState<Set<string>>(new Set());
+  const [questionCodeMap, setQuestionCodeMap] = useState<Record<string, { javascript: string; python: string }>>({});
+
+  // Custom Curated Config
+  const [customConfig, setCustomConfig] = useState({
+    smallCount: 2,
+    bigCount: 1,
+    durationMinutes: 35,
+    topic: 'Hash Table & Lookup',
+    difficulty: 'Medium' as 'Easy' | 'Medium' | 'Hard'
+  });
+
+  // AI Step-by-Step Fixer State
+  const [aiFixData, setAiFixData] = useState<StepByStepFix | null>(null);
+  const [isAiFixLoading, setIsAiFixLoading] = useState<boolean>(false);
+  const [showAiFixPanel, setShowAiFixPanel] = useState<boolean>(false);
+
+  // Compute AI suggested recipe based on profile weaknesses & session count
+  const suggestedBlueprint: SessionBlueprint = getAiSuggestedSessionBlueprint(
+    profile,
+    Math.max(1, Math.floor((solvedCount || 0) / 2) + 1)
+  );
+
   const [selectedProblem, setSelectedProblem] = useState<DsaProblem>(problems[0]);
   const [questionMode, setQuestionMode] = useState<QuestionMode>('code');
   const [workspaceTab, setWorkspaceTab] = useState<GoalSectionTab>(initialTab);
@@ -135,30 +177,211 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setCode(starter);
   };
 
-  // Dynamic AI Scenario Generation (No generic preloaded questions)
-  const [isGeneratingAiProblem, setIsGeneratingAiProblem] = useState(false);
+  // Launch Session across modes (AI Suggested, Quick Drills, Long Problems, Custom Curated)
+  const startSession = async (
+    mode: 'ai-suggested' | 'drills' | 'long' | 'custom',
+    batchNum: number = 1
+  ) => {
+    setIsLaunchingSession(true);
+    setActiveSessionMode(mode);
+    setBatchNumber(batchNum);
+    setShowAiFixPanel(false);
+    setAiFixData(null);
+    setTestRun({ isRunning: false, hasRun: false, outcome: null });
 
-  const handleGenerateDynamicProblem = async () => {
-    setIsGeneratingAiProblem(true);
     try {
-      const generated = await generateScenarioDsaProblem(
-        track.company,
-        track.role || 'Software Engineer',
-        track.focusTopics && track.focusTopics.length > 0 ? track.focusTopics : ['Algorithms', 'Distributed Invariants'],
-        track.difficulty === 'FAANG-Caliber' ? 'Medium' : 'Medium'
-      );
-      setSelectedProblem(generated);
-      const starter = typeof generated.starterCode === 'string'
-        ? generated.starterCode
-        : (generated.starterCode[language] || generated.starterCode.javascript || '');
+      let initialProblem: DsaProblem;
+      let totalCount = 1;
+
+      if (mode === 'ai-suggested') {
+        const bp = getAiSuggestedSessionBlueprint(profile, batchNum);
+        totalCount = bp.smallQuestionCount + bp.bigQuestionCount;
+        setSecondsLeft(bp.durationMinutes * 60);
+        initialProblem = await generateScenarioDsaProblem(
+          track.company,
+          track.role || 'Software Engineer',
+          bp.focusTopics,
+          'Medium',
+          bp.smallQuestionCount > 0 ? 'drill' : 'long'
+        );
+      } else if (mode === 'drills') {
+        totalCount = 10;
+        setSecondsLeft(900); // 15 mins for 10 drills
+        initialProblem = await generateScenarioDsaProblem(
+          track.company,
+          track.role || 'Software Engineer',
+          track.focusTopics && track.focusTopics.length > 0 ? track.focusTopics : ['Hash Tables', 'Arrays & Two Pointers'],
+          'Easy',
+          'drill'
+        );
+      } else if (mode === 'long') {
+        totalCount = 5;
+        setSecondsLeft(2700); // 45 mins for 5 problems
+        initialProblem = await generateScenarioDsaProblem(
+          track.company,
+          track.role || 'Software Engineer',
+          track.focusTopics && track.focusTopics.length > 0 ? track.focusTopics : ['Algorithms', 'System Invariants'],
+          'Medium',
+          'long'
+        );
+      } else {
+        // Custom Curated
+        totalCount = Math.max(1, customConfig.smallCount + customConfig.bigCount);
+        setSecondsLeft(customConfig.durationMinutes * 60);
+        initialProblem = await generateScenarioDsaProblem(
+          track.company,
+          track.role || 'Software Engineer',
+          [customConfig.topic],
+          customConfig.difficulty,
+          customConfig.smallCount > 0 ? 'drill' : 'long'
+        );
+      }
+
+      // Initialize batch slots
+      const initialBatch: DsaProblem[] = [initialProblem];
+      for (let i = 1; i < totalCount; i++) {
+        const isDrill = mode === 'drills' || (mode === 'ai-suggested' && i < (mode === 'ai-suggested' ? suggestedBlueprint.smallQuestionCount : 1));
+        initialBatch.push({
+          id: `${track.company.toLowerCase()}-batch-${batchNum}-q${i + 1}-${Date.now() + i}`,
+          title: `${track.company} Challenge #${i + 1}`,
+          difficulty: isDrill ? 'Easy' : 'Medium',
+          category: mode === 'custom' ? customConfig.topic : (track.focusTopics?.[i % (track.focusTopics?.length || 1)] || 'Data Structures'),
+          companyTags: [track.company],
+          description: `Loading tailored scenario #${i + 1} for ${track.company}... Click to generate or inspect.`,
+          functionName: `solveInvariant_${i + 1}`,
+          constraints: ['1 <= n <= 10^5', 'Time: O(n)', 'Space: O(1)'],
+          examples: [{ input: 'n = 5', output: 'true', explanation: 'Conforms to invariant bounds' }],
+          testCases: [{ title: 'Test 1: Verification', input: [5], expected: true, inputStr: 'n=5' }],
+          starterCode: {
+            javascript: `function solveInvariant_${i + 1}(n) {\n  // Implement invariant solution\n  return true;\n}`,
+            python: `def solve_invariant_${i + 1}(n):\n    # Implement invariant solution\n    return True`
+          },
+          solutionCode: {
+            javascript: `function solveInvariant_${i + 1}(n) {\n  return true;\n}`,
+            python: `def solve_invariant_${i + 1}(n):\n    return True`
+          },
+          timeComplexity: 'O(n)',
+          spaceComplexity: 'O(1)',
+          interviewCakePedagogy: { conceptBreakdown: 'Core invariant check', commonPitfalls: [] },
+          hints: []
+        });
+      }
+
+      setBatchQuestions(initialBatch);
+      setCurrentQuestionIndex(0);
+      setSelectedProblem(initialProblem);
+      const starter = typeof initialProblem.starterCode === 'string'
+        ? initialProblem.starterCode
+        : (initialProblem.starterCode[language] || initialProblem.starterCode.javascript || '');
       setCode(starter);
-      setTestRun({ isRunning: false, hasRun: false, outcome: null });
-    } catch (err) {
-      console.error("AI question generation failed:", err);
+      setQuestionCodeMap(prev => ({
+        ...prev,
+        [initialProblem.id]: {
+          javascript: typeof initialProblem.starterCode === 'string' ? initialProblem.starterCode : (initialProblem.starterCode.javascript || ''),
+          python: typeof initialProblem.starterCode === 'string' ? initialProblem.starterCode : (initialProblem.starterCode.python || '')
+        }
+      }));
+      setIsSessionActive(true);
+    } catch (e) {
+      console.error("Session launch failed:", e);
     } finally {
-      setIsGeneratingAiProblem(false);
+      setIsLaunchingSession(false);
     }
   };
+
+  // Switch between questions inside active batch
+  const handleSelectQuestionInBatch = async (targetIndex: number) => {
+    if (targetIndex === currentQuestionIndex || targetIndex < 0 || targetIndex >= batchQuestions.length) return;
+
+    // Save current problem code
+    setQuestionCodeMap(prev => ({
+      ...prev,
+      [selectedProblem.id]: {
+        ...(prev[selectedProblem.id] || { javascript: '', python: '' }),
+        [language]: code
+      }
+    }));
+
+    const nextProblem = batchQuestions[targetIndex];
+    setCurrentQuestionIndex(targetIndex);
+    setSelectedProblem(nextProblem);
+    setShowAiFixPanel(false);
+    setAiFixData(null);
+    setTestRun({ isRunning: false, hasRun: false, outcome: null });
+
+    // Restore saved code if exists, otherwise load starter
+    const saved = questionCodeMap[nextProblem.id]?.[language];
+    if (saved) {
+      setCode(saved);
+    } else {
+      const starter = typeof nextProblem.starterCode === 'string'
+        ? nextProblem.starterCode
+        : (nextProblem.starterCode[language] || nextProblem.starterCode.javascript || '');
+      setCode(starter);
+    }
+
+    // If next problem was a placeholder, fetch real question seamlessly
+    if (nextProblem.description.startsWith('Loading tailored scenario')) {
+      try {
+        const isDrill = activeSessionMode === 'drills' || (activeSessionMode === 'ai-suggested' && targetIndex < suggestedBlueprint.smallQuestionCount);
+        const fetched = await generateScenarioDsaProblem(
+          track.company,
+          track.role || 'Software Engineer',
+          [nextProblem.category],
+          nextProblem.difficulty,
+          isDrill ? 'drill' : 'long'
+        );
+        fetched.id = nextProblem.id;
+        setBatchQuestions(prev => {
+          const updated = [...prev];
+          updated[targetIndex] = fetched;
+          return updated;
+        });
+        setSelectedProblem(fetched);
+        const freshStarter = typeof fetched.starterCode === 'string'
+          ? fetched.starterCode
+          : (fetched.starterCode[language] || fetched.starterCode.javascript || '');
+        setCode(freshStarter);
+      } catch (err) {
+        console.warn("Failed to generate question slot, using fallback:", err);
+      }
+    }
+  };
+
+  // AI Step-by-Step Fixer Handlers
+  const handleRequestAiFix = async () => {
+    if (!testRun.outcome) return;
+    setIsAiFixLoading(true);
+    setShowAiFixPanel(true);
+    try {
+      const fix = await generateStepByStepFix(
+        selectedProblem,
+        code,
+        language,
+        testRun.outcome.error,
+        testRun.outcome.tests.filter(t => !t.passed)
+      );
+      setAiFixData(fix);
+    } catch (e) {
+      console.error("AI fix error:", e);
+    } finally {
+      setIsAiFixLoading(false);
+    }
+  };
+
+  const handleApplyAiFix = () => {
+    if (!aiFixData?.fixedCode) return;
+    setCode(aiFixData.fixedCode);
+    setQuestionCodeMap(prev => ({
+      ...prev,
+      [selectedProblem.id]: {
+        ...(prev[selectedProblem.id] || { javascript: '', python: '' }),
+        [language]: aiFixData.fixedCode
+      }
+    }));
+    setShowAiFixPanel(false);
+  };
+
 
   // Mobbin UI Round 2 State
   const [selectedUiChallenge, setSelectedUiChallenge] = useState(UI_CHALLENGES[0]);
@@ -255,6 +478,8 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
       }
 
       if (outcome.allPassed) {
+        setSolvedQuestionIds(prev => new Set(prev).add(selectedProblem.id));
+        setShowAiFixPanel(false);
         try {
           confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
         } catch {}
@@ -565,236 +790,675 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            className="grid grid-cols-1 lg:grid-cols-12 gap-6"
+            className="space-y-6"
           >
-            {/* Left: Problem Spec (5 cols) */}
-            <div className="lg:col-span-5 oled-panel rounded-2xl p-6 border border-white/10 space-y-4 max-h-[640px] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold font-mono">
-                    {selectedProblem.category}
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300 font-mono">
-                    {track.company}
-                  </span>
-                </div>
+            {/* ----------------- SUB-VIEW A: CLEAN SESSION LAUNCHER (When !isSessionActive) ----------------- */}
+            {!isSessionActive ? (
+              <div className="oled-panel rounded-3xl p-6 sm:p-8 border border-white/10 space-y-8 relative overflow-hidden shadow-2xl">
+                {/* Background Ambient Glow */}
+                <div className="absolute top-0 right-1/4 w-96 h-96 bg-rose-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+                <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
 
-                <button
-                  onClick={handleGenerateDynamicProblem}
-                  disabled={isGeneratingAiProblem}
-                  className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-[11px] font-mono transition shadow-sm disabled:opacity-50"
-                  title={`Generate fresh tailored challenge for ${track.company}`}
-                >
-                  <Sparkles className={`w-3.5 h-3.5 text-rose-400 ${isGeneratingAiProblem ? 'animate-spin' : ''}`} />
-                  <span>{isGeneratingAiProblem ? 'Generating...' : '⚡ AI Scenario Question'}</span>
-                </button>
-              </div>
+                {/* Loading Overlay if session is generating */}
+                {isLaunchingSession ? (
+                  <div className="py-20 flex flex-col items-center justify-center space-y-4 text-center">
+                    <div className="relative">
+                      <div className="w-16 h-16 rounded-full border-4 border-rose-500/20 border-t-rose-500 animate-spin" />
+                      <Sparkles className="w-6 h-6 text-rose-400 absolute inset-0 m-auto animate-pulse" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-bold text-white tracking-tight">
+                        AI Calibrating {track.company} Technical Screen...
+                      </h3>
+                      <p className="text-xs text-neutral-400 max-w-md mx-auto">
+                        Synthesizing real-world production challenge, verified invariants, executable test vectors, and starter code.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Header */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/10">
+                      <div>
+                        <div className="flex items-center space-x-2 mb-1.5">
+                          <span className="text-[10px] font-mono uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold">
+                            Round 1 Rehearsal Screen
+                          </span>
+                          <span className="text-[10px] font-mono text-neutral-400">
+                            Zero Preloaded Clutter
+                          </span>
+                        </div>
+                        <h2 className="text-2xl font-black text-white tracking-tight">
+                          {track.company} Technical Coding Rehearsal
+                        </h2>
+                        <p className="text-xs text-neutral-400 mt-1 max-w-xl">
+                          Select your preparation mode. All problems are 100% dynamically AI-curated for {track.company} ({track.role || 'Software Engineer'}) with crisp, real-world requirements.
+                        </p>
+                      </div>
 
-              <div className="flex items-center justify-between text-xs font-mono text-neutral-400">
-                <span>Scenario Challenge</span>
-                <span>Target: <strong className="text-white">{selectedProblem.timeComplexity}</strong></span>
-              </div>
-
-              <h3 className="text-lg font-extrabold text-white tracking-tight">{selectedProblem.title}</h3>
-              <p className="text-xs text-neutral-300 leading-relaxed whitespace-pre-line">{selectedProblem.description}</p>
-
-              <div className="space-y-2 pt-2 border-t border-white/5">
-                <span className="text-[10px] font-mono uppercase text-neutral-400 font-bold">Constraints:</span>
-                <ul className="text-xs text-neutral-300 space-y-1 font-mono">
-                  {selectedProblem.constraints.map((c, i) => (
-                    <li key={i} className="text-[11px]">• {c}</li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Scrimba Official Explainer Toggle */}
-              <div className="pt-3 border-t border-white/5">
-                <button
-                  onClick={() => setShowScrimbaExplainer(prev => !prev)}
-                  className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 text-xs font-semibold flex items-center justify-center space-x-2 transition"
-                >
-                  <Video className="w-4 h-4 text-rose-400" />
-                  <span>{showScrimbaExplainer ? 'Hide Scrimba Codecast' : 'Open Official Scrimba Codecast'}</span>
-                </button>
-              </div>
-
-              {showScrimbaExplainer && (
-                <div className="pt-2">
-                  <ScrimbaPlayer problem={selectedProblem} userCode={code} />
-                </div>
-              )}
-            </div>
-
-            {/* Right: Code Editor & Execution Actions (7 cols) */}
-            <div className="lg:col-span-7 flex flex-col space-y-4">
-              <div className={`rounded-2xl border border-white/10 bg-black overflow-hidden flex flex-col shadow-2xl relative ${
-                testRun.isRunning ? 'compiling-overdrive' : ''
-              }`}>
-                {/* Editor Bar */}
-                <div className="px-5 py-3 bg-neutral-900/90 border-b border-white/10 flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-3">
-                    <div className="flex items-center space-x-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                      <span className="font-mono text-neutral-300 font-bold">
-                        {language === 'javascript' ? 'solution.js' : 'solution.py'}
-                      </span>
+                      <div className="flex items-center space-x-3 text-xs font-mono text-neutral-400 bg-black/40 px-4 py-2.5 rounded-2xl border border-white/5">
+                        <div className="flex items-center space-x-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          <span>Gemini 3.8 Flash Calibrated</span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Language Switcher */}
-                    <div className="flex items-center p-0.5 rounded-lg bg-black/60 border border-white/10 font-mono text-[11px]">
-                      <button
-                        onClick={() => handleSwitchLanguage('javascript')}
-                        className={`px-2.5 py-0.5 rounded-md transition ${
-                          language === 'javascript' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
-                        }`}
+                    {/* Mode 1: AI Suggested (Top & Most Prominent) */}
+                    <motion.div
+                      whileHover={{ y: -2 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                      className="relative p-6 sm:p-7 rounded-2xl bg-gradient-to-br from-rose-950/40 via-neutral-900/90 to-black border-2 border-rose-500/30 hover:border-rose-500/60 transition shadow-2xl overflow-hidden group"
+                    >
+                      <div className="absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl bg-gradient-to-r from-rose-600 to-amber-600 text-white font-mono text-[10px] font-bold uppercase tracking-wider shadow-lg flex items-center space-x-1">
+                        <Sparkles className="w-3 h-3 fill-white" />
+                        <span>Recommended • Auto-Pilot</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                        <div className="lg:col-span-8 space-y-3">
+                          <div className="flex items-center space-x-2">
+                            <span className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                              <Sparkles className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <h3 className="text-lg font-black text-white tracking-tight">
+                                ⚡ AI Suggested Calibration
+                              </h3>
+                              <p className="text-[11px] text-rose-300 font-mono">
+                                Custom mode on auto-pilot • Tailored to your profile & weak spots
+                              </p>
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-neutral-300 leading-relaxed">
+                            {suggestedBlueprint.rationale}
+                          </p>
+
+                          {/* AI Selected Recipe Pills */}
+                          <div className="flex flex-wrap items-center gap-2 pt-1 font-mono text-[11px]">
+                            <span className="px-3 py-1 rounded-lg bg-black/60 border border-white/10 text-neutral-300 flex items-center space-x-1.5">
+                              <Clock className="w-3.5 h-3.5 text-rose-400" />
+                              <span>{suggestedBlueprint.durationMinutes} Minutes</span>
+                            </span>
+                            <span className="px-3 py-1 rounded-lg bg-black/60 border border-white/10 text-neutral-300 flex items-center space-x-1.5">
+                              <Zap className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{suggestedBlueprint.smallQuestionCount} Quick Drills</span>
+                            </span>
+                            <span className="px-3 py-1 rounded-lg bg-black/60 border border-white/10 text-neutral-300 flex items-center space-x-1.5">
+                              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>{suggestedBlueprint.bigQuestionCount} Deep Problem</span>
+                            </span>
+                            <span className="px-3 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 truncate max-w-xs">
+                              Weakness: {suggestedBlueprint.focusTopics[0]}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="lg:col-span-4 flex justify-end">
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => startSession('ai-suggested')}
+                            className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-black text-xs uppercase tracking-wider shadow-xl shadow-rose-600/30 transition flex items-center justify-center space-x-2"
+                          >
+                            <span>Start AI Calibrated Session</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </motion.button>
+                        </div>
+                      </div>
+                    </motion.div>
+
+                    {/* Mode 2, 3, 4: Quick Drills, Long Problems, Custom Curated */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {/* Mode 2: Quick Drills (10 Questions Batch) */}
+                      <motion.div
+                        whileHover={{ y: -3 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                        className="p-6 rounded-2xl bg-neutral-900/60 border border-white/10 hover:border-amber-500/40 transition flex flex-col justify-between space-y-5"
                       >
-                        JavaScript
-                      </button>
-                      <button
-                        onClick={() => handleSwitchLanguage('python')}
-                        className={`px-2.5 py-0.5 rounded-md transition ${
-                          language === 'python' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
-                        }`}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              <Zap className="w-5 h-5" />
+                            </span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold">
+                              10 Questions / Batch
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-white tracking-tight">
+                              ⏱️ Quick Drills
+                            </h3>
+                            <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                              Rapid 5–10 min intuition drills testing edge cases, boundary conditions, and fast syntax execution for {track.company}.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2 border-t border-white/5">
+                          <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400">
+                            <span>Batch Format</span>
+                            <span className="text-white">10 Drills • Stepper Nav</span>
+                          </div>
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => startSession('drills')}
+                            className="w-full py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center justify-center space-x-1.5"
+                          >
+                            <span>Start 10-Drill Batch</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </motion.button>
+                        </div>
+                      </motion.div>
+
+                      {/* Mode 3: Long Problems (5 Questions Batch) */}
+                      <motion.div
+                        whileHover={{ y: -3 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                        className="p-6 rounded-2xl bg-neutral-900/60 border border-white/10 hover:border-cyan-500/40 transition flex flex-col justify-between space-y-5"
                       >
-                        Python
-                      </button>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                              <Cpu className="w-5 h-5" />
+                            </span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
+                              5 Questions / Batch
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-white tracking-tight">
+                              🏗️ Long Problems
+                            </h3>
+                            <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                              In-depth 30–45 min architectural and algorithmic problems evaluating state invariants, Big-O proof, and system resilience.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2 border-t border-white/5">
+                          <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400">
+                            <span>Batch Format</span>
+                            <span className="text-white">5 Deep Problems</span>
+                          </div>
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => startSession('long')}
+                            className="w-full py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition flex items-center justify-center space-x-1.5"
+                          >
+                            <span>Start 5-Problem Batch</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </motion.button>
+                        </div>
+                      </motion.div>
+
+                      {/* Mode 4: Custom Curated (Manual Pilot) */}
+                      <motion.div
+                        whileHover={{ y: -3 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                        className="p-6 rounded-2xl bg-neutral-900/60 border border-white/10 hover:border-purple-500/40 transition flex flex-col justify-between space-y-5"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                              <Sliders className="w-5 h-5" />
+                            </span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20 font-bold">
+                              Manual Mix
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-white tracking-tight">
+                              🎯 Custom Curated
+                            </h3>
+                            <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                              Configure your exact mix of drills, deep questions, time limit, and focus topic for {track.company}.
+                            </p>
+                          </div>
+
+                          {/* Quick Selectors */}
+                          <div className="space-y-2 pt-1 text-[11px] font-mono">
+                            <div className="flex items-center justify-between">
+                              <span className="text-neutral-400">Drills / Big:</span>
+                              <div className="flex items-center space-x-1">
+                                <button
+                                  onClick={() => setCustomConfig(c => ({ ...c, smallCount: Math.max(0, c.smallCount - 1) }))}
+                                  className="w-5 h-5 rounded bg-black/60 border border-white/10 text-white flex items-center justify-center hover:bg-white/10"
+                                >-</button>
+                                <span className="text-amber-400 font-bold px-1">{customConfig.smallCount}D</span>
+                                <button
+                                  onClick={() => setCustomConfig(c => ({ ...c, smallCount: c.smallCount + 1 }))}
+                                  className="w-5 h-5 rounded bg-black/60 border border-white/10 text-white flex items-center justify-center hover:bg-white/10"
+                                >+</button>
+                                <span className="text-neutral-500">|</span>
+                                <button
+                                  onClick={() => setCustomConfig(c => ({ ...c, bigCount: Math.max(0, c.bigCount - 1) }))}
+                                  className="w-5 h-5 rounded bg-black/60 border border-white/10 text-white flex items-center justify-center hover:bg-white/10"
+                                >-</button>
+                                <span className="text-cyan-400 font-bold px-1">{customConfig.bigCount}B</span>
+                                <button
+                                  onClick={() => setCustomConfig(c => ({ ...c, bigCount: c.bigCount + 1 }))}
+                                  className="w-5 h-5 rounded bg-black/60 border border-white/10 text-white flex items-center justify-center hover:bg-white/10"
+                                >+</button>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-neutral-400">Topic:</span>
+                              <select
+                                value={customConfig.topic}
+                                onChange={(e) => setCustomConfig(c => ({ ...c, topic: e.target.value }))}
+                                className="bg-black/80 border border-white/10 rounded px-2 py-0.5 text-neutral-200 text-[10px] focus:outline-none focus:border-purple-500"
+                              >
+                                <option value="Hash Table & Lookup">Hash Table & Lookup</option>
+                                <option value="Array & String">Array & String</option>
+                                <option value="Sliding Window & Two Pointer">Sliding Window & Two Pointer</option>
+                                <option value="Tree & Graph">Tree & Graph</option>
+                                <option value="Stack & Queue">Stack & Queue</option>
+                                <option value="Dynamic Programming">Dynamic Programming</option>
+                                <option value="Full-Stack DOM & Events">Full-Stack DOM & Events</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-white/5">
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => startSession('custom')}
+                            className="w-full py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold transition flex items-center justify-center space-x-1.5"
+                          >
+                            <span>Launch Custom Mix</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </motion.button>
+                        </div>
+                      </motion.div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              /* ----------------- SUB-VIEW B: ACTIVE CODING SANDBOX ----------------- */
+              <div className="space-y-4">
+                {/* Active Session Top Navigation Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 rounded-2xl bg-neutral-900/80 border border-white/10 text-xs font-mono shadow-xl backdrop-blur-md">
+                  <div className="flex items-center space-x-3">
+                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold flex items-center space-x-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>
+                        {activeSessionMode === 'ai-suggested' && `AI Auto-Pilot • Session #${batchNumber}`}
+                        {activeSessionMode === 'drills' && `Quick Drills • Batch #${batchNumber}`}
+                        {activeSessionMode === 'long' && `Long Problems • Batch #${batchNumber}`}
+                        {activeSessionMode === 'custom' && `Custom Mix • Batch #${batchNumber}`}
+                      </span>
+                    </span>
+
+                    {/* Batch Stepper Pills */}
+                    <div className="flex items-center space-x-1.5 overflow-x-auto max-w-md py-0.5">
+                      {batchQuestions.map((q, idx) => {
+                        const isCurrent = idx === currentQuestionIndex;
+                        const isSolved = solvedQuestionIds.has(q.id);
+                        return (
+                          <button
+                            key={q.id || idx}
+                            onClick={() => handleSelectQuestionInBatch(idx)}
+                            className={`px-3 py-1 rounded-lg font-bold text-[11px] transition flex items-center space-x-1 ${
+                              isCurrent
+                                ? 'bg-white text-black shadow-lg shadow-white/10 ring-2 ring-rose-500'
+                                : isSolved
+                                ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-900/60'
+                                : 'bg-black/60 text-neutral-400 border border-white/5 hover:text-white hover:bg-white/5'
+                            }`}
+                            title={q.title}
+                          >
+                            <span>Q{idx + 1}</span>
+                            {isSolved && <CheckCircle2 className="w-3 h-3 text-emerald-400 ml-0.5" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
+                  {/* Actions: Next Batch & End Session */}
                   <div className="flex items-center space-x-2">
+                    {/* If on final question of batch, render "Generate Next Batch" button */}
+                    {currentQuestionIndex === batchQuestions.length - 1 && (
+                      <motion.button
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => startSession(activeSessionMode, batchNumber + 1)}
+                        disabled={isLaunchingSession}
+                        className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-bold text-xs shadow-md transition flex items-center space-x-1.5 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isLaunchingSession ? 'animate-spin' : ''}`} />
+                        <span>Generate Next Batch of {activeSessionMode === 'drills' ? '10' : activeSessionMode === 'long' ? '5' : 'Questions'} →</span>
+                      </motion.button>
+                    )}
+
                     <button
-                      onClick={() => setIsPreviewModalOpen(true)}
-                      className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 transition text-xs font-mono"
+                      onClick={() => setIsSessionActive(false)}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 text-xs transition"
+                      title="Return to mode selector"
                     >
-                      <Eye className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Live UI Preview</span>
+                      <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
+                      <span>End / Change Mode</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Monaco Editor Surface */}
-                <div className="relative min-h-[380px] bg-black">
-                  <Editor
-                    height="380px"
-                    language={language === 'python' ? 'python' : 'javascript'}
-                    theme="vs-dark"
-                    value={code}
-                    onChange={(val) => setCode(val || '')}
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                      tabSize: 2,
-                      wordWrap: 'on',
-                      padding: { top: 12, bottom: 12 },
-                      fontFamily: 'Fira Code, JetBrains Mono, Menlo, monospace',
-                      fontLigatures: true,
-                      suggestOnTriggerCharacters: true
-                    }}
-                  />
-                </div>
-
-                {/* Inline Test Results & Stdout Terminal */}
-                {testRun.hasRun && testRun.outcome && (
-                  <div className="p-4 bg-neutral-950 border-t border-white/10 text-xs font-mono space-y-3">
-                    <div className="flex items-center justify-between">
+                {/* 2-Column Problem & Code Sandbox */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left: Problem Spec (5 cols) */}
+                  <div className="lg:col-span-5 oled-panel rounded-2xl p-6 border border-white/10 space-y-4 max-h-[640px] overflow-y-auto">
+                    <div className="flex items-center justify-between pb-3 border-b border-white/10">
                       <div className="flex items-center space-x-2">
-                        {testRun.outcome.allPassed ? (
-                          <div className="flex items-center space-x-1.5 text-emerald-400 font-bold">
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>All Invariants Verified & Conforming!</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-1.5 text-rose-400 font-bold">
-                            <AlertTriangle className="w-4 h-4" />
-                            <span>
-                              {testRun.outcome.tests.length > 0 
-                                ? `${testRun.outcome.tests.filter(t => t.passed).length}/${testRun.outcome.tests.length} Assertions Passed` 
-                                : 'Syntax / Execution Issue'}
-                            </span>
-                          </div>
-                        )}
+                        <span className="text-xs px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold font-mono">
+                          {selectedProblem.category}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300 font-mono">
+                          {track.company}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 font-mono">
+                          {selectedProblem.difficulty}
+                        </span>
                       </div>
-                      <div className="flex items-center space-x-2 text-neutral-400 text-[11px]">
-                        <span>{testRun.outcome.executionTimeMs}ms execution</span>
-                        <button
-                          onClick={() => setIsPreviewModalOpen(true)}
-                          className="text-rose-400 hover:text-white underline transition"
-                        >
-                          Inspect Output →
-                        </button>
-                      </div>
+
+                      <span className="text-xs font-mono text-neutral-400">
+                        Q{currentQuestionIndex + 1} of {batchQuestions.length}
+                      </span>
                     </div>
 
-                    {/* Individual Test Assertions */}
-                    {testRun.outcome.tests.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
-                        {testRun.outcome.tests.map((t, idx) => (
-                          <div 
-                            key={idx}
-                            className={`p-2.5 rounded-xl border ${
-                              t.passed 
-                                ? 'bg-emerald-950/20 border-emerald-500/30' 
-                                : 'bg-rose-950/20 border-rose-500/30'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between text-[11px] mb-1">
-                              <span className="font-bold text-white truncate mr-1">{t.title}</span>
-                              <span className={t.passed ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
-                                {t.passed ? '✓ PASS' : '✗ FAIL'}
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-neutral-400 space-y-0.5">
-                              <div className="truncate">Expected: <span className="text-emerald-300 font-mono">{t.expected}</span></div>
-                              <div className="truncate">Actual: <span className={t.passed ? 'text-neutral-200 font-mono' : 'text-rose-300 font-mono'}>{t.actual}</span></div>
-                            </div>
-                          </div>
+                    <div className="flex items-center justify-between text-xs font-mono text-neutral-400">
+                      <span>Live Technical Scenario</span>
+                      <span>Target: <strong className="text-white">{selectedProblem.timeComplexity}</strong></span>
+                    </div>
+
+                    <h3 className="text-lg font-extrabold text-white tracking-tight">{selectedProblem.title}</h3>
+                    <p className="text-xs text-neutral-300 leading-relaxed whitespace-pre-line">{selectedProblem.description}</p>
+
+                    <div className="space-y-2 pt-2 border-t border-white/5">
+                      <span className="text-[10px] font-mono uppercase text-neutral-400 font-bold">Constraints & Invariants:</span>
+                      <ul className="text-xs text-neutral-300 space-y-1 font-mono">
+                        {selectedProblem.constraints.map((c, i) => (
+                          <li key={i} className="text-[11px]">• {c}</li>
                         ))}
-                      </div>
-                    )}
+                      </ul>
+                    </div>
 
-                    {/* Backend Stdout logs */}
-                    {testRun.outcome.stdout && (
-                      <div className="p-3 rounded-xl bg-black border border-white/10 space-y-1">
-                        <div className="flex items-center space-x-1.5 text-neutral-400 text-[10px] uppercase font-bold tracking-wider">
-                          <Terminal className="w-3 h-3 text-rose-400" />
-                          <span>Console & Terminal (stdout):</span>
-                        </div>
-                        <pre className="font-mono text-xs text-neutral-200 whitespace-pre-wrap max-h-32 overflow-y-auto">
-                          {testRun.outcome.stdout}
-                        </pre>
-                      </div>
-                    )}
+                    {/* Scrimba Official Explainer Toggle */}
+                    <div className="pt-3 border-t border-white/5">
+                      <button
+                        onClick={() => setShowScrimbaExplainer(prev => !prev)}
+                        className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 text-xs font-semibold flex items-center justify-center space-x-2 transition"
+                      >
+                        <Video className="w-4 h-4 text-rose-400" />
+                        <span>{showScrimbaExplainer ? 'Hide Scrimba Codecast' : 'Open Official Scrimba Codecast'}</span>
+                      </button>
+                    </div>
 
-                    {testRun.outcome.error && (
-                      <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs">
-                        ⚠️ {testRun.outcome.error}
+                    {showScrimbaExplainer && (
+                      <div className="pt-2">
+                        <ScrimbaPlayer problem={selectedProblem} userCode={code} />
                       </div>
                     )}
                   </div>
-                )}
 
-                {/* Editor Footer Action */}
-                <div className="px-5 py-3.5 bg-neutral-900/90 border-t border-white/10 flex items-center justify-between">
-                  <span className="text-[11px] font-mono text-neutral-400">
-                    Target: <strong className="text-white">{selectedProblem.timeComplexity}</strong>
-                  </span>
+                  {/* Right: Code Editor & Execution Actions (7 cols) */}
+                  <div className="lg:col-span-7 flex flex-col space-y-4">
+                    <div className={`rounded-2xl border border-white/10 bg-black overflow-hidden flex flex-col shadow-2xl relative ${
+                      testRun.isRunning ? 'compiling-overdrive' : ''
+                    }`}>
+                      {/* Editor Bar */}
+                      <div className="px-5 py-3 bg-neutral-900/90 border-b border-white/10 flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                            <span className="font-mono text-neutral-300 font-bold">
+                              {language === 'javascript' ? 'solution.js' : 'solution.py'}
+                            </span>
+                          </div>
 
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                    onClick={handleRunCode}
-                    disabled={testRun.isRunning}
-                    className="flex items-center space-x-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-white" />
-                    <span>{testRun.isRunning ? 'Executing...' : 'Run Tests & Preview UI'}</span>
-                  </motion.button>
+                          {/* Language Switcher */}
+                          <div className="flex items-center p-0.5 rounded-lg bg-black/60 border border-white/10 font-mono text-[11px]">
+                            <button
+                              onClick={() => handleSwitchLanguage('javascript')}
+                              className={`px-2.5 py-0.5 rounded-md transition ${
+                                language === 'javascript' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              JavaScript
+                            </button>
+                            <button
+                              onClick={() => handleSwitchLanguage('python')}
+                              className={`px-2.5 py-0.5 rounded-md transition ${
+                                language === 'python' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
+                              }`}
+                            >
+                              Python
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setIsPreviewModalOpen(true)}
+                            className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 transition text-xs font-mono"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Live UI Preview</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Monaco Editor Surface */}
+                      <div className="relative min-h-[380px] bg-black">
+                        <Editor
+                          height="380px"
+                          language={language === 'python' ? 'python' : 'javascript'}
+                          theme="vs-dark"
+                          value={code}
+                          onChange={(val) => setCode(val || '')}
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 13,
+                            lineNumbers: 'on',
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            tabSize: 2,
+                            wordWrap: 'on',
+                            padding: { top: 12, bottom: 12 },
+                            fontFamily: 'Fira Code, JetBrains Mono, Menlo, monospace',
+                            fontLigatures: true,
+                            suggestOnTriggerCharacters: true
+                          }}
+                        />
+                      </div>
+
+                      {/* Inline Test Results, Terminal & Step-by-Step AI Fixer */}
+                      {testRun.hasRun && testRun.outcome && (
+                        <div className="p-4 bg-neutral-950 border-t border-white/10 text-xs font-mono space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              {testRun.outcome.allPassed ? (
+                                <div className="flex items-center space-x-1.5 text-emerald-400 font-bold">
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>All Invariants Verified & Conforming!</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center space-x-1.5 text-rose-400 font-bold">
+                                  <AlertTriangle className="w-4 h-4" />
+                                  <span>
+                                    {testRun.outcome.tests.length > 0 
+                                      ? `${testRun.outcome.tests.filter(t => t.passed).length}/${testRun.outcome.tests.length} Assertions Passed` 
+                                      : 'Syntax / Execution Issue'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-2 text-neutral-400 text-[11px]">
+                              <span>{testRun.outcome.executionTimeMs}ms execution</span>
+                              <button
+                                onClick={() => setIsPreviewModalOpen(true)}
+                                className="text-rose-400 hover:text-white underline transition"
+                              >
+                                Inspect Output →
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Individual Test Assertions */}
+                          {testRun.outcome.tests.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+                              {testRun.outcome.tests.map((t, idx) => (
+                                <div 
+                                  key={idx}
+                                  className={`p-2.5 rounded-xl border ${
+                                    t.passed 
+                                      ? 'bg-emerald-950/20 border-emerald-500/30' 
+                                      : 'bg-rose-950/20 border-rose-500/30'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between text-[11px] mb-1">
+                                    <span className="font-bold text-white truncate mr-1">{t.title}</span>
+                                    <span className={t.passed ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                                      {t.passed ? '✓ PASS' : '✗ FAIL'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-neutral-400 space-y-0.5">
+                                    <div className="truncate">Expected: <span className="text-emerald-300 font-mono">{t.expected}</span></div>
+                                    <div className="truncate">Actual: <span className={t.passed ? 'text-neutral-200 font-mono' : 'text-rose-300 font-mono'}>{t.actual}</span></div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Backend Stdout logs */}
+                          {testRun.outcome.stdout && (
+                            <div className="p-3 rounded-xl bg-black border border-white/10 space-y-1">
+                              <div className="flex items-center space-x-1.5 text-neutral-400 text-[10px] uppercase font-bold tracking-wider">
+                                <Terminal className="w-3 h-3 text-rose-400" />
+                                <span>Console & Terminal (stdout):</span>
+                              </div>
+                              <pre className="font-mono text-xs text-neutral-200 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                                {testRun.outcome.stdout}
+                              </pre>
+                            </div>
+                          )}
+
+                          {testRun.outcome.error && (
+                            <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs">
+                              ⚠️ {testRun.outcome.error}
+                            </div>
+                          )}
+
+                          {/* ================= STEP-BY-STEP AI FIXER ================= */}
+                          {(!testRun.outcome.allPassed || testRun.outcome.error) && (
+                            <div className="pt-2 border-t border-white/10 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="text-[11px] text-neutral-400 font-mono">
+                                  Need help debugging? Let the AI analyze the error and guide you step by step.
+                                </div>
+                                <motion.button
+                                  whileHover={{ scale: 1.02 }}
+                                  whileTap={{ scale: 0.98 }}
+                                  onClick={handleRequestAiFix}
+                                  disabled={isAiFixLoading}
+                                  className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition disabled:opacity-50"
+                                >
+                                  <Wrench className={`w-3.5 h-3.5 ${isAiFixLoading ? 'animate-spin' : ''}`} />
+                                  <span>{isAiFixLoading ? 'Analyzing Code & Invariants...' : '🧠 AI Step-by-Step Fixer'}</span>
+                                </motion.button>
+                              </div>
+
+                              {/* Expanded AI Fix Drawer / Card */}
+                              {showAiFixPanel && aiFixData && (
+                                <motion.div
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: 'auto' }}
+                                  className="p-4 rounded-xl bg-neutral-900/90 border border-rose-500/30 space-y-4 text-xs font-mono"
+                                >
+                                  <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                                    <div className="flex items-center space-x-2">
+                                      <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+                                        Root Cause
+                                      </span>
+                                      <span className="text-white font-semibold">
+                                        {aiFixData.rootCause}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold">
+                                      {aiFixData.conceptBroken}
+                                    </span>
+                                  </div>
+
+                                  {/* Step-by-Step Instructions */}
+                                  <div className="space-y-1.5">
+                                    <span className="text-[10px] uppercase font-bold text-neutral-400">Step-by-Step Resolution:</span>
+                                    <div className="space-y-1">
+                                      {aiFixData.steps.map((st, sIdx) => (
+                                        <div key={sIdx} className="p-2 rounded-lg bg-black/60 border border-white/5 text-neutral-300 flex items-start space-x-2">
+                                          <span className="w-5 h-5 rounded-full bg-rose-600/30 text-rose-300 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                                            {sIdx + 1}
+                                          </span>
+                                          <span className="text-[11px] leading-relaxed">{st}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <p className="text-[11px] text-neutral-400 leading-relaxed italic bg-black/40 p-2.5 rounded-lg border border-white/5">
+                                    "{aiFixData.explanation}"
+                                  </p>
+
+                                  {/* Action: Apply Fix Directly to Editor */}
+                                  <div className="flex items-center justify-end space-x-2 pt-2 border-t border-white/10">
+                                    <button
+                                      onClick={() => setShowAiFixPanel(false)}
+                                      className="px-3 py-1.5 rounded-lg text-neutral-400 hover:text-white transition text-xs"
+                                    >
+                                      Dismiss
+                                    </button>
+                                    <motion.button
+                                      whileHover={{ scale: 1.02 }}
+                                      whileTap={{ scale: 0.98 }}
+                                      onClick={handleApplyAiFix}
+                                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition flex items-center space-x-2"
+                                    >
+                                      <CheckCircle2 className="w-4 h-4" />
+                                      <span>Apply Fix to Editor</span>
+                                    </motion.button>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Editor Footer Action */}
+                      <div className="px-5 py-3.5 bg-neutral-900/90 border-t border-white/10 flex items-center justify-between">
+                        <span className="text-[11px] font-mono text-neutral-400">
+                          Target: <strong className="text-white">{selectedProblem.timeComplexity}</strong>
+                        </span>
+
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                          onClick={handleRunCode}
+                          disabled={testRun.isRunning}
+                          className="flex items-center space-x-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-white" />
+                          <span>{testRun.isRunning ? 'Executing...' : 'Run Tests & Preview UI'}</span>
+                        </motion.button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </motion.div>
         )}
 

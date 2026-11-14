@@ -523,34 +523,193 @@ export async function generateAiScorecard(
   return generateAuthenticScorecard(null, problem, '// Candidate Verified Implementation', 'javascript', outcome, 1, completedFlowsCount);
 }
 
+export interface StepByStepFix {
+  rootCause: string;
+  conceptBroken: string;
+  steps: string[];
+  fixedCode: string;
+  explanation: string;
+}
+
+export interface SessionBlueprint {
+  durationMinutes: number;
+  smallQuestionCount: number;
+  bigQuestionCount: number;
+  rationale: string;
+  focusTopics: string[];
+}
+
+export function getAiSuggestedSessionBlueprint(
+  profile: UserInterviewProfile | null,
+  sessionCount: number = 1
+): SessionBlueprint {
+  const company = profile?.targetCompany || 'Tier-1 Engineering';
+  const role = profile?.role || 'Software Engineer';
+  const seniority = profile?.seniority || 'Mid-Level';
+  const weaknesses = profile?.focusAreas && profile.focusAreas.length > 0
+    ? profile.focusAreas
+    : ['Edge Cases & Invariants', 'Data Structure Selection', 'Time-Space Tradeoffs'];
+
+  let durationMinutes = 35;
+  let smallQuestionCount = 2;
+  let bigQuestionCount = 1;
+  let rationale = `Calibrated for ${company} (${seniority} ${role}). Balanced 2 quick intuition drills with 1 in-depth architectural challenge targeting ${weaknesses[0]}.`;
+
+  if (sessionCount <= 1) {
+    durationMinutes = 25;
+    smallQuestionCount = 2;
+    bigQuestionCount = 1;
+    rationale = `Session #1 Diagnostic: 2 rapid drills to calibrate baseline syntax and edge-case handling, followed by 1 core ${company} algorithmic problem.`;
+  } else if (sessionCount === 2) {
+    durationMinutes = 40;
+    smallQuestionCount = 3;
+    bigQuestionCount = 1;
+    rationale = `Session #2 Calibration: Increasing speed on drill mechanics (3 drills) while attacking your diagnosed weak spot: ${weaknesses[0]}.`;
+  } else if (sessionCount >= 3) {
+    durationMinutes = 55;
+    smallQuestionCount = 2;
+    bigQuestionCount = 2;
+    rationale = `Session #${sessionCount} Endurance: Simulating full on-site pressure with 2 quick drills and 2 deep algorithmic challenges.`;
+  }
+
+  return {
+    durationMinutes,
+    smallQuestionCount,
+    bigQuestionCount,
+    rationale,
+    focusTopics: weaknesses
+  };
+}
+
+// Generate an authentic Step-by-Step Fix when candidate code fails
+export async function generateStepByStepFix(
+  problem: DsaProblem,
+  code: string,
+  language: 'javascript' | 'python',
+  error?: string,
+  failedTests?: Array<{ title: string; expected: any; actual: any }>
+): Promise<StepByStepFix> {
+  const failureContext = error
+    ? `Runtime / Syntax Error: ${error}`
+    : `Failed Test Cases:\n${(failedTests || []).map(t => `- ${t.title}: Expected '${JSON.stringify(t.expected)}', got '${JSON.stringify(t.actual)}'`).join('\n')}`;
+
+  const prompt = `You are Stackwa's AI Technical Interview Lead and Senior Mentor.
+A candidate working on the following coding problem in ${language} hit an error or failed tests.
+
+PROBLEM:
+Title: ${problem.title}
+Description: ${problem.description}
+Function Name: ${problem.functionName}
+
+CANDIDATE CODE:
+\`\`\`${language}
+${code}
+\`\`\`
+
+FAILURE / ERROR:
+${failureContext}
+
+INSTRUCTIONS:
+1. Identify the exact root cause of the error or test failure (e.g., syntax mistake, HTML pasted into JS, off-by-one index, infinite loop, missing base case, incorrect return type).
+2. Point out the core programming concept or invariant that was broken.
+3. Provide a clear, progressive step-by-step fix (numbered steps) explaining how to rectify the code logically.
+4. Provide the fully corrected, production-grade ${language} function implementation that passes all requirements.
+5. Provide a supportive, concise explanation.
+
+Return ONLY valid JSON matching this schema:
+{
+  "rootCause": string (1-2 sentences explaining what went wrong),
+  "conceptBroken": string (short label like "Pure JavaScript syntax vs HTML markup", "Boundary condition check", "Off-by-one window bounds"),
+  "steps": [
+    string (Step 1: ...),
+    string (Step 2: ...),
+    string (Step 3: ...)
+  ],
+  "fixedCode": string (the complete, working replacement function in ${language}),
+  "explanation": string (supportive explanation of why this fix is correct and optimal)
+}`;
+
+  try {
+    const response = await fetch(getEndpoint(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (raw) {
+        return JSON.parse(raw) as StepByStepFix;
+      }
+    }
+  } catch (err) {
+    console.warn("AI fix generation failed, using fallback diagnostic:", err);
+  }
+
+  // Resilient fallback fix
+  const isHtmlInJs = code.includes('<') && (code.includes('div') || code.includes('body') || code.includes('html'));
+  if (isHtmlInJs) {
+    return {
+      rootCause: "The submitted code contains raw HTML/DOM markup rather than pure JavaScript logic, causing a syntax parser error.",
+      conceptBroken: "Pure algorithmic JavaScript vs HTML markup",
+      steps: [
+        "Step 1: Strip out all HTML tags (<tag>, <div>, etc.).",
+        `Step 2: Declare the function \`${problem.functionName}\` with expected arguments.`,
+        "Step 3: Implement the algorithmic logic returning the requested value directly."
+      ],
+      fixedCode: typeof problem.solutionCode === 'string' ? problem.solutionCode : (problem.solutionCode[language] || problem.solutionCode.javascript),
+      explanation: "Switching to pure algorithmic code resolves syntax parsing errors and allows unit test assertions to execute."
+    };
+  }
+
+  return {
+    rootCause: error ? `The execution encountered: ${error}` : "One or more assertions did not match expected output.",
+    conceptBroken: "Edge Case Invariant & State Handling",
+    steps: [
+      "Step 1: Check input boundary conditions (e.g. empty inputs, single element, negative numbers).",
+      "Step 2: Verify loop terminating bounds and off-by-one array index access.",
+      "Step 3: Ensure the function returns the exact expected data type."
+    ],
+    fixedCode: typeof problem.solutionCode === 'string' ? problem.solutionCode : (problem.solutionCode[language] || problem.solutionCode.javascript),
+    explanation: "Re-aligning the loop bounds and return type satisfies all test requirements."
+  };
+}
+
 // Dynamically generate authentic, company-specific DSA scenario problems using Gemini
 export async function generateScenarioDsaProblem(
   company: string,
   role: string,
   focusTopics: string[] = ['Algorithms', 'Data Structures'],
-  difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium'
+  difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium',
+  problemType: 'drill' | 'long' = 'long'
 ): Promise<DsaProblem> {
-  const prompt = `You are a Staff Software Engineer and Interview Lead at ${company} creating an authentic, company-specific algorithmic interview challenge for a ${role} candidate.
+  const isDrill = problemType === 'drill';
+  const prompt = `You are a Senior Staff Software Engineer and Technical Interviewer at ${company} conducting a live technical screen for a ${role} candidate.
+Format: ${isDrill ? 'QUICK DRILL (5-10 minutes, testing fast intuition, clean code, and edge cases)' : 'IN-DEPTH ALGORITHMIC PROBLEM (30-45 minutes, testing architecture and optimal Big-O)'}.
 Topics: ${focusTopics.join(', ')}. Difficulty: ${difficulty}.
 
 CRITICAL REQUIREMENTS:
-1. Ground the problem in realistic technical challenges encountered at ${company} (e.g., Stripe -> Webhook deduplication / idempotent ledgers; NVIDIA -> GPU thread block scheduling / tensor buffer tiles; Netflix -> Adaptive bitrate chunk prefetching; Uber -> Geospatial trip batching; Google -> Distributed inverted index / lock-free ring buffers).
-2. DO NOT generate standard textbook questions (e.g. no two sum, no real-time sliding window request arbiter, no invert binary tree).
+1. Ground the problem naturally in realistic technical domains of ${company} (e.g. Infosys/TCS -> enterprise transaction routing, record reconciliations, stream deduplication; NVIDIA -> memory alignment, parallel warp task queues; Stripe -> webhook ledgers, idempotency; Airbnb -> booking window conflicts; Google -> distributed indexing, token buckets).
+2. The problem description MUST BE CRISP, NATURAL, AND REALISTIC (2 to 4 sentences maximum). DO NOT write long academic essays or dense nested JSON schemas. Talk like a real human interviewer.
 3. The problem MUST include 3 to 4 complete, executable test cases with inputs, expected outputs, and readable descriptions.
-4. Function name must be valid camelCase (e.g., \`scheduleKernelWarps\`).
+4. Function name must be valid camelCase (e.g., \`validateTransactionBounds\`).
 5. Provide matching JavaScript and Python starter templates with correct argument names.
 6. Provide optimal JavaScript and Python solution implementations that accurately pass all test cases.
 
 Return ONLY valid JSON matching this schema:
 {
-  "id": "${company.toLowerCase().replace(/[^a-z0-9]/g, '-')}-scenario-${Date.now()}",
-  "title": string,
+  "id": "${company.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${problemType}-${Date.now()}",
+  "title": string (concise title, e.g. "${company} Transaction Deduplicator"),
   "difficulty": "${difficulty}",
-  "category": string,
+  "category": "${focusTopics[0] || 'Algorithms & Data Structures'}",
   "companyTags": ["${company}"],
-  "description": string (rich 2-paragraph scenario description explaining the production challenge and technical requirements),
+  "description": string (CRISP 2-4 sentences max specifying input, output, and goal),
   "functionName": string (valid camelCase identifier),
-  "constraints": [string, string, string, string],
+  "constraints": [string, string, string],
   "examples": [
     {
       "input": string,
@@ -623,105 +782,189 @@ Return ONLY valid JSON matching this schema:
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
+    if (response.ok) {
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        const generated = JSON.parse(text) as DsaProblem;
+        generated.id = generated.id || `${company.toLowerCase()}-${problemType}-${Date.now()}`;
+        generated.companyTags = [company];
+        return generated;
+      }
     }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("No response generated from Gemini API.");
-
-    const generated = JSON.parse(text) as DsaProblem;
-    // Ensure ID is unique and companyTags are preserved
-    generated.id = generated.id || `${company.toLowerCase()}-scenario-${Date.now()}`;
-    generated.companyTags = [company];
-    return generated;
   } catch (error) {
     console.error("AI scenario generation error:", error);
-    // Fallback: Generate specialized algorithmic problem for the company
+  }
+
+  // Varied resilient fallbacks based on problemType
+  if (isDrill) {
     return {
-      id: `${company.toLowerCase()}-task-scheduler-${Date.now()}`,
-      title: `${company} High-Throughput Task Sequencer`,
-      difficulty: difficulty,
-      category: 'Concurrency & Priority Queues',
+      id: `${company.toLowerCase()}-drill-record-filter-${Date.now()}`,
+      title: `${company} Record Batch Filter`,
+      difficulty: 'Easy',
+      category: 'Hash Tables & Two Pointers',
       companyTags: [company],
-      description: `In ${company}'s production infrastructure, tasks with priority weights and execution deadlines must be dispatched without starving low-priority threads. Given a list of task weights and concurrency limit k, determine the sequence of task IDs that maximizes throughput while respecting starvation intervals.`,
-      functionName: 'schedulePriorityTasks',
+      description: `In ${company}'s ingestion pipeline, incoming event records must be filtered to remove duplicate IDs while preserving original order. Given an array of numeric record IDs, return the array of unique IDs in the order they first appeared.`,
+      functionName: 'filterUniqueRecords',
       constraints: [
-        '1 <= tasks.length <= 10^5',
-        '1 <= k <= 1000',
-        'Target Time Complexity: O(n log k)',
-        'Target Space Complexity: O(k)'
+        '1 <= records.length <= 10^5',
+        'Target Time Complexity: O(n)',
+        'Target Space Complexity: O(n)'
       ],
       examples: [
         {
-          input: 'tasks = [5, 2, 8, 1], k = 2',
-          output: '[8, 5, 2, 1]',
-          explanation: 'Tasks sorted by priority weight.'
+          input: 'records = [10, 20, 10, 30, 20]',
+          output: '[10, 20, 30]',
+          explanation: 'Duplicates of 10 and 20 are dropped.'
         }
       ],
       testCases: [
         {
-          title: 'Test 1: Standard priority ordering',
-          input: [[5, 2, 8, 1], 2],
-          expected: [8, 5, 2, 1],
-          inputStr: 'tasks=[5, 2, 8, 1], k=2'
+          title: 'Test 1: Normal array with repeats',
+          input: [[10, 20, 10, 30, 20]],
+          expected: [10, 20, 30],
+          inputStr: 'records=[10, 20, 10, 30, 20]'
         },
         {
-          title: 'Test 2: Already sorted stream',
-          input: [[10, 20, 30], 1],
-          expected: [30, 20, 10],
-          inputStr: 'tasks=[10, 20, 30], k=1'
+          title: 'Test 2: All identical records',
+          input: [[7, 7, 7, 7]],
+          expected: [7],
+          inputStr: 'records=[7, 7, 7, 7]'
         },
         {
-          title: 'Test 3: Single task',
-          input: [[42], 1],
-          expected: [42],
-          inputStr: 'tasks=[42], k=1'
+          title: 'Test 3: Already unique stream',
+          input: [[1, 2, 3, 4]],
+          expected: [1, 2, 3, 4],
+          inputStr: 'records=[1, 2, 3, 4]'
         }
       ],
       starterCode: {
-        javascript: `function schedulePriorityTasks(tasks, k) {\n  // Implement priority-weighted scheduler\n  return tasks.slice().sort((a, b) => b - a);\n}`,
-        python: `def schedule_priority_tasks(tasks, k):\n    # Implement priority-weighted scheduler\n    return sorted(tasks, reverse=True)`
+        javascript: `function filterUniqueRecords(records) {\n  // Return array of unique records in first-seen order\n  const seen = new Set();\n  const result = [];\n  for (const r of records) {\n    if (!seen.has(r)) {\n      seen.add(r);\n      result.push(r);\n    }\n  }\n  return result;\n}`,
+        python: `def filter_unique_records(records):\n    # Return list of unique records in first-seen order\n    seen = set()\n    result = []\n    for r in records:\n        if r not in seen:\n            seen.add(r)\n            result.append(r)\n    return result`
       },
       solutionCode: {
-        javascript: `function schedulePriorityTasks(tasks, k) {\n  return tasks.slice().sort((a, b) => b - a);\n}`,
-        python: `def schedule_priority_tasks(tasks, k):\n    return sorted(tasks, reverse=True)`
+        javascript: `function filterUniqueRecords(records) {\n  const seen = new Set();\n  const result = [];\n  for (const r of records) {\n    if (!seen.has(r)) {\n      seen.add(r);\n      result.push(r);\n    }\n  }\n  return result;\n}`,
+        python: `def filter_unique_records(records):\n    seen = set()\n    result = []\n    for r in records:\n        if r not in seen:\n            seen.add(r)\n            result.append(r)\n    return result`
       },
-      timeComplexity: 'O(n log n)',
+      timeComplexity: 'O(n)',
       spaceComplexity: 'O(n)',
       interviewCakePedagogy: {
-        conceptBreakdown: `Avoid unneeded full re-sorts on live streams by maintaining a bounded heap of size k.`,
-        commonPitfalls: ['Memory reallocation on large task batches', 'Inverting priority order']
+        conceptBreakdown: 'A Hash Set gives O(1) membership checks, maintaining order with a simple pass.',
+        commonPitfalls: ['Using indexOf inside loop leading to O(n²)', 'Losing original insertion order']
       },
       hints: [
         {
           id: 1,
           tier: 'Clarifying Questions',
-          title: 'Vault 1: Scale & Memory',
-          metaClue: 'How many tasks can arrive in memory?',
-          content: 'Since k is smaller than total tasks, keep a sliding window heap rather than buffering all tasks.',
+          title: 'Vault 1: Memory Constraints',
+          metaClue: 'Can we use auxiliary memory?',
+          content: 'Yes, an O(n) Hash Set is optimal for maintaining first-seen order.',
           revealed: false
         },
         {
           id: 2,
           tier: 'Data Structure Clue',
-          title: 'Vault 2: Max-Heap Invariant',
-          metaClue: 'How to extract top priority in logarithmic time?',
-          content: 'A priority queue ensures max element extraction in O(log k) time.',
+          title: 'Vault 2: Lookups',
+          metaClue: 'Which structure provides constant time lookups?',
+          content: 'Set.has() runs in O(1) average time.',
           revealed: false
         },
         {
           id: 3,
           tier: 'Edge Case & Complexity',
-          title: 'Vault 3: Tie Breaking',
-          metaClue: 'How to handle equal priorities?',
-          content: 'Preserve insertion order (stable sort) when weights are identical.',
+          title: 'Vault 3: Single Elements',
+          metaClue: 'What if array has length 1?',
+          content: 'Handled naturally without special casing.',
           revealed: false
         }
       ]
     };
   }
+
+  // Fallback for long in-depth challenge
+  return {
+    id: `${company.toLowerCase()}-task-scheduler-${Date.now()}`,
+    title: `${company} Priority Task Sequencer`,
+    difficulty: difficulty,
+    category: 'Priority Queues & Greedy Scheduling',
+    companyTags: [company],
+    description: `In ${company}'s production infrastructure, tasks with priority weights and concurrency limit k must be scheduled to maximize throughput. Given an array of task priorities and window size k, return the sorted execution order prioritizing higher weights.`,
+    functionName: 'schedulePriorityTasks',
+    constraints: [
+      '1 <= tasks.length <= 10^5',
+      '1 <= k <= 1000',
+      'Target Time Complexity: O(n log n)',
+      'Target Space Complexity: O(n)'
+    ],
+    examples: [
+      {
+        input: 'tasks = [5, 2, 8, 1], k = 2',
+        output: '[8, 5, 2, 1]',
+        explanation: 'Tasks ordered by priority weight.'
+      }
+    ],
+    testCases: [
+      {
+        title: 'Test 1: Standard priority ordering',
+        input: [[5, 2, 8, 1], 2],
+        expected: [8, 5, 2, 1],
+        inputStr: 'tasks=[5, 2, 8, 1], k=2'
+      },
+      {
+        title: 'Test 2: Already sorted stream',
+        input: [[10, 20, 30], 1],
+        expected: [30, 20, 10],
+        inputStr: 'tasks=[10, 20, 30], k=1'
+      },
+      {
+        title: 'Test 3: Single task',
+        input: [[42], 1],
+        expected: [42],
+        inputStr: 'tasks=[42], k=1'
+      }
+    ],
+    starterCode: {
+      javascript: `function schedulePriorityTasks(tasks, k) {\n  // Implement priority-weighted scheduler\n  return tasks.slice().sort((a, b) => b - a);\n}`,
+      python: `def schedule_priority_tasks(tasks, k):\n    # Implement priority-weighted scheduler\n    return sorted(tasks, reverse=True)`
+    },
+    solutionCode: {
+      javascript: `function schedulePriorityTasks(tasks, k) {\n  return tasks.slice().sort((a, b) => b - a);\n}`,
+      python: `def schedule_priority_tasks(tasks, k):\n    return sorted(tasks, reverse=True)`
+    },
+    timeComplexity: 'O(n log n)',
+    spaceComplexity: 'O(n)',
+    interviewCakePedagogy: {
+      conceptBreakdown: 'Avoid full re-sorting on dynamic streams by maintaining a bounded priority queue.',
+      commonPitfalls: ['Inverting sorting comparison function', 'Mutating original input in-place']
+    },
+    hints: [
+      {
+        id: 1,
+        tier: 'Clarifying Questions',
+        title: 'Vault 1: Scale & Memory',
+        metaClue: 'How many tasks can arrive in memory?',
+        content: 'Since k is smaller than total tasks, keep a bounded structure.',
+        revealed: false
+      },
+      {
+        id: 2,
+        tier: 'Data Structure Clue',
+        title: 'Vault 2: Max-Heap Invariant',
+        metaClue: 'How to extract top priority quickly?',
+        content: 'A max-heap guarantees logarithmic extraction.',
+        revealed: false
+      },
+      {
+        id: 3,
+        tier: 'Edge Case & Complexity',
+        title: 'Vault 3: Tie Breaking',
+        metaClue: 'How to handle equal priorities?',
+        content: 'Preserve stable order when weights match.',
+        revealed: false
+      }
+    ]
+  };
 }
+
 
 
