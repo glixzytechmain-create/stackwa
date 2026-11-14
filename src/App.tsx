@@ -16,7 +16,7 @@ import { SettingsView } from './components/SettingsView';
 import { SponsorsView } from './components/SponsorsView';
 import { ShortcutsView } from './components/ShortcutsView';
 import { Building2, Sparkles, Code2 } from 'lucide-react';
-import { TabType, UserInterviewProfile, DayPlan, DsaProblem } from './types';
+import { TabType, UserInterviewProfile, DayPlan, DsaProblem, TestSessionRecord } from './types';
 import { DSA_PROBLEMS } from './data/dsaProblems';
 import { UI_CHALLENGES } from './data/uiFlows';
 import { 
@@ -323,6 +323,22 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSaveTestRecord = (record: TestSessionRecord) => {
+    const updatedHistory = [...(profile.testHistory || []), record];
+    const updatedProfile: UserInterviewProfile = {
+      ...profile,
+      testHistory: updatedHistory
+    };
+    setProfile(updatedProfile);
+    localStorage.setItem('stackwa_interview_profile', JSON.stringify(updatedProfile));
+
+    if (user) {
+      saveUserProgress(user.uid, {
+        profile: updatedProfile
+      });
+    }
+  };
+
   return (
     <div className="relative min-h-screen bg-black text-neutral-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
       
@@ -391,6 +407,7 @@ export const App: React.FC = () => {
                       roadmap={roadmap}
                       onToggleDay={handleToggleDay}
                       onOpenSettings={() => setIsOnboardingOpen(true)}
+                      onSaveTestRecord={handleSaveTestRecord}
                       solvedCount={solvedProblemIds.length}
                       completedFlowsCount={completedFlowIds.length}
                       streakDays={streakDays}
@@ -413,7 +430,7 @@ export const App: React.FC = () => {
                               What will you hone today?
                             </h2>
                             <p className="text-neutral-400 text-sm max-w-2xl leading-relaxed">
-                              Each goal card represents an isolated, company-scoped interview screen. Enter any card to rehearse its dedicated DSA invariants, Mobbin UI flows, and Socratic defense.
+                              Each goal card represents an isolated, company-scoped interview screen. Enter any card to rehearse its dedicated DSA invariants, System Architecture flows, and Socratic defense.
                             </p>
                           </div>
 
@@ -584,6 +601,7 @@ export const App: React.FC = () => {
                     completedFlowsCount={completedFlowIds.length} 
                     totalFlows={UI_CHALLENGES.length} 
                     streakDays={streakDays} 
+                    profile={profile}
                     setActiveTab={setActiveTab} 
                   />
                 </motion.div>

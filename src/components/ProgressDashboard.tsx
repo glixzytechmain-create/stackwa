@@ -7,10 +7,14 @@ import {
   Target,
   ArrowRight,
   ShieldCheck,
-  Zap
+  Zap,
+  Award,
+  CheckCircle2,
+  Clock,
+  Calendar
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { TabType } from '../types';
+import { TabType, UserInterviewProfile } from '../types';
 import { SpotlightCard } from './SpotlightCard';
 
 interface ProgressDashboardProps {
@@ -19,6 +23,7 @@ interface ProgressDashboardProps {
   completedFlowsCount: number;
   totalFlows: number;
   streakDays: number;
+  profile?: UserInterviewProfile | null;
   setActiveTab: (tab: TabType) => void;
 }
 
@@ -28,6 +33,7 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
   completedFlowsCount,
   totalFlows,
   streakDays,
+  profile,
   setActiveTab
 }) => {
   const dsaPercent = Math.round((solvedCount / totalProblems) * 100);
@@ -180,11 +186,103 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
               <span>Enter Interview Screen</span>
               <span>&rarr;</span>
             </span>
-            <span className="text-[10px] font-mono text-neutral-500">Live UI Sandbox & Scrimba</span>
+            <span className="text-[10px] font-mono text-neutral-500">Live UI Sandbox & Generative UI</span>
           </div>
         </SpotlightCard>
 
       </div>
+
+      {/* Rehearsal Test History & Performance Records */}
+      <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.2)" className="p-7 space-y-5">
+        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+          <div className="flex items-center space-x-3">
+            <span className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              <Award className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="text-lg font-bold text-white tracking-tight">
+                Rehearsal Test History & Profile Telemetry
+              </h3>
+              <p className="text-xs text-neutral-400">
+                Audited test batches recorded during live company coding rehearsals
+              </p>
+            </div>
+          </div>
+
+          <span className="text-xs font-mono px-3 py-1 rounded-full bg-white/5 border border-white/10 text-neutral-300">
+            {profile?.testHistory?.length || 0} Sessions Recorded
+          </span>
+        </div>
+
+        {profile?.testHistory && profile.testHistory.length > 0 ? (
+          <div className="space-y-3">
+            {profile.testHistory.slice(-5).reverse().map((record) => (
+              <div 
+                key={record.id} 
+                className="p-4 rounded-xl bg-black/60 border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-white text-sm">{record.company}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      {record.role}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300 uppercase">
+                      {record.mode} • Batch #{record.batchNumber}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-neutral-400 flex items-center space-x-3">
+                    <span className="flex items-center space-x-1">
+                      <Calendar className="w-3 h-3 text-neutral-500" />
+                      <span>{new Date(record.completedAt).toLocaleDateString()}</span>
+                    </span>
+                    <span className="flex items-center space-x-1">
+                      <Clock className="w-3 h-3 text-neutral-500" />
+                      <span>{Math.floor(record.durationSeconds / 60)}m {record.durationSeconds % 60}s</span>
+                    </span>
+                    {record.questionTitles && record.questionTitles.length > 0 && (
+                      <span className="text-neutral-500 truncate max-w-xs">
+                        Topics: {record.questionTitles.slice(0, 2).join(', ')}{record.questionTitles.length > 2 ? '...' : ''}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-4">
+                  <div className="text-right">
+                    <div className="text-[10px] text-neutral-500 uppercase">Solved</div>
+                    <div className="font-bold text-white text-sm">
+                      {record.solvedQuestions} / {record.totalQuestions}
+                    </div>
+                  </div>
+                  <div className="text-right pl-3 border-l border-white/10">
+                    <div className="text-[10px] text-neutral-500 uppercase">Score</div>
+                    <div className={`font-black text-base ${
+                      record.scorePercentage >= 80 
+                        ? 'text-emerald-400' 
+                        : record.scorePercentage >= 50 
+                        ? 'text-amber-400' 
+                        : 'text-rose-400'
+                    }`}>
+                      {record.scorePercentage}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 rounded-xl bg-black/40 border border-white/5 text-center space-y-2">
+            <CheckCircle2 className="w-8 h-8 text-neutral-600 mx-auto" />
+            <p className="text-xs text-neutral-400 font-mono">
+              No completed rehearsal test batches recorded yet.
+            </p>
+            <p className="text-[11px] text-neutral-500">
+              Start a Round 1 Rehearsal session for any target company and click <strong>Submit Test</strong> to track your permanent performance telemetry.
+            </p>
+          </div>
+        )}
+      </SpotlightCard>
 
       {/* System Integrity & Fast Actions Bar */}
       <SpotlightCard spotlightColor="rgba(220, 38, 38, 0.15)" className="p-6">

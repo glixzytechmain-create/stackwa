@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, 
   Clock, 
@@ -9,7 +9,6 @@ import {
   Sparkles, 
   Bot, 
   Send, 
-  Video, 
   Eye,
   Check,
   Layout,
@@ -25,11 +24,14 @@ import {
   RotateCcw,
   Sliders,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Award,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
-import { DsaProblem, InterviewClarifyingQuestion, UserInterviewProfile, DayPlan } from '../types';
+import { DsaProblem, InterviewClarifyingQuestion, UserInterviewProfile, DayPlan, TestSessionRecord } from '../types';
 import { InterviewTrack, GoalSectionTab } from './InterviewCard';
 import { DSA_PROBLEMS } from '../data/dsaProblems';
 import { UI_CHALLENGES } from '../data/uiFlows';
@@ -42,8 +44,9 @@ import {
   StepByStepFix, 
   SessionBlueprint 
 } from '../services/aiService';
+import { generateInteractiveGraphic } from '../services/generativeUiService';
+import { MonacoTypingEffectOverlay } from './MonacoTypingEffectOverlay';
 import { sendAnakinChatMessage } from '../services/anakinService';
-import { ScrimbaPlayer } from './ScrimbaPlayer';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
 import { RaiseHandModal } from './RaiseHandModal';
 import { RoadmapView } from './RoadmapView';
@@ -60,12 +63,13 @@ interface InterviewEnvironmentProps {
   roadmap?: DayPlan[];
   onToggleDay?: (dayNumber: number) => void;
   onOpenSettings?: () => void;
+  onSaveTestRecord?: (record: TestSessionRecord) => void;
   solvedCount?: number;
   completedFlowsCount?: number;
   streakDays?: number;
 }
 
-export type QuestionMode = 'code' | 'mobbin-ui' | 'mcq' | 'system-reasoning';
+export type QuestionMode = 'code' | 'system-visualizer' | 'mcq' | 'system-reasoning';
 
 interface McqQuestion {
   id: string;
@@ -111,6 +115,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   roadmap = [],
   onToggleDay,
   onOpenSettings,
+  onSaveTestRecord,
   solvedCount = 0,
   completedFlowsCount = 0,
   streakDays = 1
@@ -125,6 +130,24 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   const [isLaunchingSession, setIsLaunchingSession] = useState<boolean>(false);
   const [solvedQuestionIds, setSolvedQuestionIds] = useState<Set<string>>(new Set());
   const [questionCodeMap, setQuestionCodeMap] = useState<Record<string, { javascript: string; python: string }>>({});
+
+  // Session Exit Warning Modal
+  const [showExitModal, setShowExitModal] = useState<boolean>(false);
+
+  // Submit Test Modal & Persistence
+  const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
+  const [submittedRecord, setSubmittedRecord] = useState<TestSessionRecord | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Monaco Editor & Typing Animation Refs
+  const editorContainerRef = useRef<HTMLDivElement | null>(null);
+  const [editorInstance, setEditorInstance] = useState<any>(null);
+  const [hasTypedYet, setHasTypedYet] = useState<boolean>(false);
+
+  // Generative UI State (Replaces Scrimba & Mobbin)
+  const [generativeHtml, setGenerativeHtml] = useState<string | null>(null);
+  const [isGeneratingVisual, setIsGeneratingVisual] = useState<boolean>(false);
+  const [showGenerativeVisual, setShowGenerativeVisual] = useState<boolean>(false);
 
   // Custom Curated Config
   const [customConfig, setCustomConfig] = useState({
@@ -188,6 +211,10 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setShowAiFixPanel(false);
     setAiFixData(null);
     setTestRun({ isRunning: false, hasRun: false, outcome: null });
+    setHasTypedYet(false);
+    setGenerativeHtml(null);
+    setShowGenerativeVisual(false);
+    setSolvedQuestionIds(new Set());
 
     try {
       let initialProblem: DsaProblem;
@@ -270,15 +297,13 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
       setBatchQuestions(initialBatch);
       setCurrentQuestionIndex(0);
       setSelectedProblem(initialProblem);
-      const starter = typeof initialProblem.starterCode === 'string'
-        ? initialProblem.starterCode
-        : (initialProblem.starterCode[language] || initialProblem.starterCode.javascript || '');
-      setCode(starter);
+      setCode('');
+      setHasTypedYet(false);
       setQuestionCodeMap(prev => ({
         ...prev,
         [initialProblem.id]: {
-          javascript: typeof initialProblem.starterCode === 'string' ? initialProblem.starterCode : (initialProblem.starterCode.javascript || ''),
-          python: typeof initialProblem.starterCode === 'string' ? initialProblem.starterCode : (initialProblem.starterCode.python || '')
+          javascript: '',
+          python: ''
         }
       }));
       setIsSessionActive(true);
@@ -308,16 +333,17 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setShowAiFixPanel(false);
     setAiFixData(null);
     setTestRun({ isRunning: false, hasRun: false, outcome: null });
+    setGenerativeHtml(null);
+    setShowGenerativeVisual(false);
 
-    // Restore saved code if exists, otherwise load starter
+    // Restore saved code if exists, otherwise keep empty for typing placeholder
     const saved = questionCodeMap[nextProblem.id]?.[language];
-    if (saved) {
+    if (saved && saved.trim().length > 0) {
       setCode(saved);
+      setHasTypedYet(true);
     } else {
-      const starter = typeof nextProblem.starterCode === 'string'
-        ? nextProblem.starterCode
-        : (nextProblem.starterCode[language] || nextProblem.starterCode.javascript || '');
-      setCode(starter);
+      setCode('');
+      setHasTypedYet(false);
     }
 
     // If next problem was a placeholder, fetch real question seamlessly
@@ -337,11 +363,9 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
           updated[targetIndex] = fetched;
           return updated;
         });
-        setSelectedProblem(fetched);
-        const freshStarter = typeof fetched.starterCode === 'string'
-          ? fetched.starterCode
-          : (fetched.starterCode[language] || fetched.starterCode.javascript || '');
-        setCode(freshStarter);
+        if (!hasTypedYet) {
+          setCode('');
+        }
       } catch (err) {
         console.warn("Failed to generate question slot, using fallback:", err);
       }
@@ -382,6 +406,60 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setShowAiFixPanel(false);
   };
 
+  // Toggle Gemini Generative UI Motion Graphic
+  const handleToggleGenerativeVisual = async () => {
+    if (showGenerativeVisual) {
+      setShowGenerativeVisual(false);
+      return;
+    }
+    setShowGenerativeVisual(true);
+    if (!generativeHtml) {
+      setIsGeneratingVisual(true);
+      try {
+        const html = await generateInteractiveGraphic(selectedProblem, track.company);
+        setGenerativeHtml(html);
+      } catch (err) {
+        console.error("Generative UI generation failed:", err);
+      } finally {
+        setIsGeneratingVisual(false);
+      }
+    }
+  };
+
+  // Submit Session Flow
+  const handleSubmitSession = () => {
+    setIsSubmitting(true);
+    const totalQ = Math.max(1, batchQuestions.length);
+    const solvedQ = solvedQuestionIds.size;
+    const scorePct = Math.round((solvedQ / totalQ) * 100);
+    const timeSpent = Math.max(1, totalSeconds - secondsLeft);
+
+    const record: TestSessionRecord = {
+      id: `session-${Date.now()}`,
+      company: track.company,
+      role: track.role || 'Software Engineer',
+      mode: activeSessionMode,
+      batchNumber: batchNumber,
+      totalQuestions: totalQ,
+      solvedQuestions: solvedQ,
+      scorePercentage: scorePct,
+      durationSeconds: timeSpent,
+      completedAt: new Date().toISOString(),
+      questionTitles: batchQuestions.map(q => q.title)
+    };
+
+    if (onSaveTestRecord) {
+      onSaveTestRecord(record);
+    }
+    setSubmittedRecord(record);
+    setIsSubmitting(false);
+    setShowSubmitModal(true);
+
+    try {
+      confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
+    } catch {}
+  };
+
 
   // Mobbin UI Round 2 State
   const [selectedUiChallenge, setSelectedUiChallenge] = useState(UI_CHALLENGES[0]);
@@ -396,7 +474,6 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isRaiseHandOpen, setIsRaiseHandOpen] = useState(false);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<InterviewClarifyingQuestion[]>([]);
-  const [showScrimbaExplainer, setShowScrimbaExplainer] = useState(false);
 
   // Timer Countdown (15m, 30m, 45m)
   const totalSeconds = track.intensity === '15m' ? 900 : track.intensity === '30m' ? 1800 : 2700;
@@ -540,14 +617,14 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
 
     const lower = text.toLowerCase();
 
-    // 1. Steering: switch to Mobbin UI
-    if (lower.includes('mobbin') || lower.includes('ui') || lower.includes('design') || lower.includes('component')) {
-      setQuestionMode('mobbin-ui');
+    // 1. Steering: switch to System Visualizer
+    if (lower.includes('visualizer') || lower.includes('ui') || lower.includes('design') || lower.includes('component')) {
+      setQuestionMode('system-visualizer');
       setIsAgentTyping(false);
       setAgentMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         sender: 'agent',
-        text: "Switched to Round 2: Mobbin Production UI Architecture. Explore component trees and state boundaries above!"
+        text: "Switched to Round 2: Interactive System Visualizer & Architecture Flow. Explore component trees and state boundaries above!"
       }]);
       return;
     }
@@ -636,7 +713,13 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
         {/* Left: Exit & Company Context */}
         <div className="flex items-center space-x-3">
           <button
-            onClick={onExit}
+            onClick={() => {
+              if (isSessionActive) {
+                setShowExitModal(true);
+              } else {
+                onExit();
+              }
+            }}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 text-xs font-semibold transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -737,13 +820,13 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
               </button>
 
               <button
-                onClick={() => setQuestionMode('mobbin-ui')}
+                onClick={() => setQuestionMode('system-visualizer')}
                 className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
-                  questionMode === 'mobbin-ui' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
+                  questionMode === 'system-visualizer' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
                 }`}
               >
                 <Layout className="w-3.5 h-3.5" />
-                <span>Round 2: Mobbin UI</span>
+                <span>Round 2: System Visualizer</span>
               </button>
 
               <button
@@ -770,7 +853,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
 
           <span className="text-neutral-500 text-[11px]">
             {questionMode === 'code' && 'Invariants & Automated Tests'}
-            {questionMode === 'mobbin-ui' && 'Component Trees & State Boundaries'}
+            {questionMode === 'system-visualizer' && 'Architecture Trees & State Boundaries'}
             {questionMode === 'mcq' && 'Architectural Tradeoff Decisions'}
             {questionMode === 'system-reasoning' && 'Defense Against Concurrency & Split-Brain'}
           </span>
@@ -1137,7 +1220,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                     )}
 
                     <button
-                      onClick={() => setIsSessionActive(false)}
+                      onClick={() => setShowExitModal(true)}
                       className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 text-xs transition"
                       title="Return to mode selector"
                     >
@@ -1186,22 +1269,53 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                       </ul>
                     </div>
 
-                    {/* Scrimba Official Explainer Toggle */}
-                    <div className="pt-3 border-t border-white/5">
+                    {/* Interactive AI Motion Graphic (Generative UI) */}
+                    <div className="pt-3 border-t border-white/5 space-y-3">
                       <button
-                        onClick={() => setShowScrimbaExplainer(prev => !prev)}
-                        className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 text-xs font-semibold flex items-center justify-center space-x-2 transition"
+                        onClick={handleToggleGenerativeVisual}
+                        className={`w-full py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center space-x-2 transition ${
+                          showGenerativeVisual
+                            ? 'bg-rose-600/20 border-rose-500/50 text-rose-300'
+                            : 'bg-white/5 hover:bg-white/10 text-neutral-300 border-white/10'
+                        }`}
                       >
-                        <Video className="w-4 h-4 text-rose-400" />
-                        <span>{showScrimbaExplainer ? 'Hide Scrimba Codecast' : 'Open Official Scrimba Codecast'}</span>
+                        <Sparkles className="w-4 h-4 text-rose-400" />
+                        <span>{showGenerativeVisual ? 'Hide Interactive Visual Solution' : '⚡ Generate Interactive Visual Solution'}</span>
                       </button>
-                    </div>
 
-                    {showScrimbaExplainer && (
-                      <div className="pt-2">
-                        <ScrimbaPlayer problem={selectedProblem} userCode={code} />
-                      </div>
-                    )}
+                      {showGenerativeVisual && (
+                        <div className="rounded-2xl border border-white/10 bg-black/80 overflow-hidden p-3 space-y-2">
+                          <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400">
+                            <span className="flex items-center space-x-1.5 text-rose-400 font-bold">
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Step-by-Step Visual Execution Model</span>
+                            </span>
+                            {isGeneratingVisual && (
+                              <span className="text-amber-400 flex items-center space-x-1 animate-pulse">
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                <span>Synthesizing...</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {isGeneratingVisual ? (
+                            <div className="h-64 flex flex-col items-center justify-center space-y-3 bg-neutral-950/60 rounded-xl">
+                              <div className="w-8 h-8 rounded-full border-2 border-rose-500 border-t-transparent animate-spin" />
+                              <p className="text-xs font-mono text-neutral-400">
+                                Gemini 3.8 Flash is crafting an interactive motion diagram...
+                              </p>
+                            </div>
+                          ) : generativeHtml ? (
+                            <iframe
+                              srcDoc={generativeHtml}
+                              title="Interactive Visual Solution"
+                              sandbox="allow-scripts"
+                              className="w-full h-80 rounded-xl border border-white/10 bg-neutral-950"
+                            />
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Right: Code Editor & Execution Actions (7 cols) */}
@@ -1242,6 +1356,21 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
 
                         <div className="flex items-center space-x-2">
                           <button
+                            onClick={() => {
+                              const starter = typeof selectedProblem.starterCode === 'string'
+                                ? selectedProblem.starterCode
+                                : (selectedProblem.starterCode[language] || selectedProblem.starterCode.javascript || '');
+                              setCode(starter);
+                              setHasTypedYet(true);
+                            }}
+                            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 transition text-xs font-mono"
+                            title="Insert clean function boilerplate"
+                          >
+                            <Code2 className="w-3.5 h-3.5 text-neutral-400" />
+                            <span>Load Skeleton</span>
+                          </button>
+
+                          <button
                             onClick={() => setIsPreviewModalOpen(true)}
                             className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 transition text-xs font-mono"
                           >
@@ -1251,14 +1380,36 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                         </div>
                       </div>
 
-                      {/* Monaco Editor Surface */}
-                      <div className="relative min-h-[380px] bg-black">
+                      {/* Monaco Editor Surface with Forward/Reverse Typing Particles & Animated Typewriter Placeholder */}
+                      <div ref={editorContainerRef} className="relative min-h-[380px] bg-black">
+                        <MonacoTypingEffectOverlay 
+                          containerRef={editorContainerRef} 
+                          editorInstance={editorInstance} 
+                        />
+
+                        {!hasTypedYet && code.trim().length === 0 && (
+                          <div 
+                            className="absolute top-3 left-14 z-10 pointer-events-none select-none font-mono text-sm text-neutral-500 flex items-center space-x-1"
+                          >
+                            <span>{language === 'python' ? '# Start typing your solution here...' : '// Start typing your solution here...'}</span>
+                            <span className="w-2 h-4 bg-rose-500 inline-block animate-pulse" />
+                          </div>
+                        )}
+
                         <Editor
                           height="380px"
                           language={language === 'python' ? 'python' : 'javascript'}
                           theme="vs-dark"
                           value={code}
-                          onChange={(val) => setCode(val || '')}
+                          onMount={(editor) => {
+                            setEditorInstance(editor);
+                          }}
+                          onChange={(val) => {
+                            setCode(val || '');
+                            if (!hasTypedYet && (val || '').length > 0) {
+                              setHasTypedYet(true);
+                            }
+                          }}
                           options={{
                             minimap: { enabled: false },
                             fontSize: 13,
@@ -1443,16 +1594,29 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                           Target: <strong className="text-white">{selectedProblem.timeComplexity}</strong>
                         </span>
 
-                        <motion.button
-                          whileTap={{ scale: 0.95 }}
-                          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                          onClick={handleRunCode}
-                          disabled={testRun.isRunning}
-                          className="flex items-center space-x-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-white" />
-                          <span>{testRun.isRunning ? 'Executing...' : 'Run Tests & Preview UI'}</span>
-                        </motion.button>
+                        <div className="flex items-center space-x-2.5">
+                          <motion.button
+                            whileTap={{ scale: 0.95 }}
+                            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                            onClick={handleRunCode}
+                            disabled={testRun.isRunning}
+                            className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 text-white font-bold text-xs border border-white/10 transition"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-white" />
+                            <span>{testRun.isRunning ? 'Executing...' : 'Run Tests & Preview'}</span>
+                          </motion.button>
+
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleSubmitSession}
+                            disabled={isSubmitting}
+                            className="flex items-center space-x-2 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition disabled:opacity-50"
+                          >
+                            <Award className="w-3.5 h-3.5" />
+                            <span>{isSubmitting ? 'Recording...' : 'Submit Test'}</span>
+                          </motion.button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1462,22 +1626,22 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
           </motion.div>
         )}
 
-        {/* MODE 2: MOBBIN PRODUCTION UI ARCHITECTURE */}
-        {questionMode === 'mobbin-ui' && (
+        {/* MODE 2: SYSTEM VISUALIZER & ARCHITECTURE */}
+        {questionMode === 'system-visualizer' && (
           <motion.div
-            key="mobbin-mode"
+            key="system-visualizer-mode"
             initial={{ opacity: 0, y: 12, filter: 'blur(8px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
             className="space-y-6"
           >
-            {/* Top Bar: Flow Selector & Mobbin Verified Badge */}
+            {/* Top Bar: Flow Selector & Architecture Badge */}
             <div className="oled-panel rounded-2xl p-6 border border-white/10 bg-neutral-950/80 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center space-x-2.5">
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold font-mono">
-                    Official Mobbin Screen Flow
+                    Production System Architecture Flow
                   </span>
                   <span className="text-xs text-neutral-400 font-mono">
                     Pattern: {selectedUiChallenge.patternType}
@@ -1552,7 +1716,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                 }`}
               >
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Mobbin Architecture Quiz</span>
+                <span>System Architecture Quiz</span>
               </button>
             </div>
 
@@ -1649,7 +1813,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                     return (
                       <div className="space-y-4">
                         <span className="text-xs font-mono text-rose-400 font-bold uppercase">
-                          Mobbin Design Pattern Validation
+                          System Design Pattern Validation
                         </span>
                         <h4 className="text-base font-bold text-white leading-relaxed">{quiz.question}</h4>
 
@@ -2011,6 +2175,7 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
         completedFlowsCount={completedFlowsCount}
         totalFlows={UI_CHALLENGES.length}
         streakDays={streakDays}
+        profile={profile}
         setActiveTab={() => {}}
       />
     </motion.div>
@@ -2035,6 +2200,144 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
         clarifyingQuestions={clarifyingQuestions}
         onAddQuestion={(q) => setClarifyingQuestions(prev => [...prev, q])}
       />
+
+      {/* ================= EXIT CONFIRMATION MODAL ================= */}
+      <AnimatePresence>
+        {showExitModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-md w-full bg-neutral-900 border border-rose-500/30 rounded-2xl p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center space-x-3 text-rose-400">
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                  <AlertTriangle className="w-6 h-6 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">End Active Rehearsal?</h3>
+                  <p className="text-xs text-neutral-400">Confirmation Required</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-neutral-300 leading-relaxed">
+                Do you really want to end this session? If you exit without submitting, this test session will not be recorded in your profile.
+              </p>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-white/10">
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  className="px-4 py-2 rounded-xl text-neutral-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold transition"
+                >
+                  Stay in Test
+                </button>
+                <button
+                  onClick={() => {
+                    setShowExitModal(false);
+                    setIsSessionActive(false);
+                    onExit();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition shadow-lg shadow-rose-600/30"
+                >
+                  Exit Without Saving
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ================= SUBMIT TEST & SCORECARD MODAL ================= */}
+      <AnimatePresence>
+        {showSubmitModal && submittedRecord && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="max-w-lg w-full bg-gradient-to-b from-neutral-900 to-black border-2 border-emerald-500/40 rounded-3xl p-7 shadow-2xl space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <span className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    <Award className="w-7 h-7 text-emerald-400" />
+                  </span>
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
+                      Test Completed & Synced
+                    </span>
+                    <h3 className="text-xl font-black text-white tracking-tight">
+                      Session Performance Scorecard
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSubmitModal(false)}
+                  className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-white/10 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 font-mono text-center">
+                <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
+                  <div className="text-[10px] text-neutral-400 uppercase">Accuracy</div>
+                  <div className="text-2xl font-black text-emerald-400 mt-1">{submittedRecord.scorePercentage}%</div>
+                </div>
+                <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
+                  <div className="text-[10px] text-neutral-400 uppercase">Solved</div>
+                  <div className="text-2xl font-black text-white mt-1">{submittedRecord.solvedQuestions}/{submittedRecord.totalQuestions}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
+                  <div className="text-[10px] text-neutral-400 uppercase">Time Spent</div>
+                  <div className="text-2xl font-black text-amber-400 mt-1">{Math.floor(submittedRecord.durationSeconds / 60)}m {submittedRecord.durationSeconds % 60}s</div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-black/60 border border-white/10 space-y-2">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-neutral-400">Target Track:</span>
+                  <span className="text-white font-bold">{submittedRecord.company} ({submittedRecord.role})</span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-neutral-400">Mode:</span>
+                  <span className="text-rose-300 font-bold uppercase">{submittedRecord.mode} • Batch #{submittedRecord.batchNumber}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-neutral-400">Synced to Profile:</span>
+                  <span className="text-emerald-400 font-bold flex items-center space-x-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Vault History Updated</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-2 border-t border-white/10">
+                <button
+                  onClick={() => {
+                    setShowSubmitModal(false);
+                    setWorkspaceTab('readiness');
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/10 text-xs font-semibold transition"
+                >
+                  <span>View in Target Readiness</span>
+                  <ExternalLink className="w-3.5 h-3.5 ml-1.5 inline" />
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSubmitModal(false);
+                    setIsSessionActive(false);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-lg shadow-emerald-600/30"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

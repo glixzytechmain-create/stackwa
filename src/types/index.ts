@@ -113,6 +113,20 @@ export interface InterviewScorecard {
   timestamp: string;
 }
 
+export interface TestSessionRecord {
+  id: string;
+  company: string;
+  role: string;
+  mode: 'ai-suggested' | 'drills' | 'long' | 'custom';
+  batchNumber: number;
+  totalQuestions: number;
+  solvedQuestions: number;
+  scorePercentage: number;
+  durationSeconds: number;
+  completedAt: string;
+  questionTitles: string[];
+}
+
 export interface UserInterviewProfile {
   targetCompany: string;
   role: string;
@@ -123,6 +137,7 @@ export interface UserInterviewProfile {
   calendarConnected: boolean;
   onboardingCompleted: boolean;
   isGeneralPractice?: boolean;
+  testHistory?: TestSessionRecord[];
 }
 
 export interface DayPlan {

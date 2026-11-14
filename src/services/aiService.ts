@@ -692,20 +692,25 @@ export async function generateScenarioDsaProblem(
 Format: ${isDrill ? 'QUICK DRILL (5-10 minutes, testing fast intuition, clean code, and edge cases)' : 'IN-DEPTH ALGORITHMIC PROBLEM (30-45 minutes, testing architecture and optimal Big-O)'}.
 Topics: ${focusTopics.join(', ')}. Difficulty: ${difficulty}.
 
-CRITICAL REQUIREMENTS:
-1. Ground the problem naturally in realistic technical domains of ${company} (e.g. Infosys/TCS -> enterprise transaction routing, record reconciliations, stream deduplication; NVIDIA -> memory alignment, parallel warp task queues; Stripe -> webhook ledgers, idempotency; Airbnb -> booking window conflicts; Google -> distributed indexing, token buckets).
-2. The problem description MUST BE CRISP, NATURAL, AND REALISTIC (2 to 4 sentences maximum). DO NOT write long academic essays or dense nested JSON schemas. Talk like a real human interviewer.
-3. The problem MUST include 3 to 4 complete, executable test cases with inputs, expected outputs, and readable descriptions.
-4. Function name must be valid camelCase (e.g., \`validateTransactionBounds\`).
-5. Provide matching JavaScript and Python starter templates with correct argument names.
-6. Provide optimal JavaScript and Python solution implementations that accurately pass all test cases.
+THINK BEFORE YOU ASK — ROLE & CONDITION CALIBRATION:
+1. Examine the candidate's exact target role ('${role}'), target company ('${company}'), and focus topics ('${focusTopics.join(', ')}'):
+   - If role involves Frontend / Full-Stack: test diverse frontend & full-stack algorithms such as DOM node tree diffing, virtual node reconciliation, layout tree dimensions, reactive event throttlers, state signal graphs, or CSS specificity parsers.
+   - If role involves Backend / Distributed: test lock-free ring buffers, distributed token buckets, write-ahead log compaction, DAG workflow scheduling, cache eviction, or consistent hashing rings.
+   - If role involves Systems / Low-Level: test GPU warp thread scheduling, memory page boundaries, bitwise flags, or buffer alignment.
+2. DIVERSITY REQUIREMENT: Draw from the full spectrum of Computer Science (Graphs BFS/DFS/Topological, Binary Search bounds, Dynamic Programming memoization, Monotonic Stacks, Heaps, Two Pointers, Trees/Tries, Disjoint Sets). DO NOT repeat the same topic or archetype.
+3. The problem description MUST BE CRISP, NATURAL, AND REALISTIC (2 to 4 sentences maximum). DO NOT write long academic essays or dense nested JSON schemas. Talk like a real senior technical interviewer.
+4. Target Big-O must accurately match the algorithmic paradigm (e.g., O(log N) for binary search, O(V + E) for graphs, O(N log K) for priority queues, O(N) for linear scans).
+5. The problem MUST include 3 to 4 complete, executable test cases with inputs, expected outputs, and readable descriptions.
+6. Function name must be valid camelCase (e.g., \`validateDomNesting\`, \`findRotatedThreshold\`, \`scheduleWarpTask\`).
+7. Provide matching JavaScript and Python starter templates with correct argument names.
+8. Provide optimal JavaScript and Python solution implementations that accurately pass all test cases.
 
 Return ONLY valid JSON matching this schema:
 {
   "id": "${company.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${problemType}-${Date.now()}",
-  "title": string (concise title, e.g. "${company} Transaction Deduplicator"),
+  "title": string (concise title, e.g. "${company} DOM Hierarchy Validator", "${company} Distributed Rate Limiter"),
   "difficulty": "${difficulty}",
-  "category": "${focusTopics[0] || 'Algorithms & Data Structures'}",
+  "category": string (e.g. "Tree Traversal", "Monotonic Stack", "Binary Search", "Dynamic Programming", "Graph Topo-Sort"),
   "companyTags": ["${company}"],
   "description": string (CRISP 2-4 sentences max specifying input, output, and goal),
   "functionName": string (valid camelCase identifier),
