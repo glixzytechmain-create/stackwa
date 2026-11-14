@@ -28,7 +28,7 @@ let pyodideInstance: any = null;
 let pyodideLoadingPromise: Promise<any> | null = null;
 
 // Initialize Pyodide WebAssembly Python 3 runtime
-async function getPyodide(): Promise<any> {
+export async function getPyodide(): Promise<any> {
   if (pyodideInstance) return pyodideInstance;
 
   if (pyodideLoadingPromise) return pyodideLoadingPromise;
@@ -136,59 +136,60 @@ function runJavaScript(
     const snakeName = toSnakeCase(functionName);
     
     // Compile and resolve target function dynamically
+    // Compile and resolve target function dynamically
     const factory = new Function('console', `
-      "use strict";
-      ${userCode};
+      ${userCode}
       
-      // 1. Try exact functionName
       if (typeof ${functionName} === 'function') {
         return ${functionName};
       }
-      
-      // 2. Try snake_case version
       try {
-        if (typeof eval('${snakeName}') === 'function') {
-          return eval('${snakeName}');
+        if (typeof ${snakeName} === 'function') {
+          return ${snakeName};
         }
       } catch (e) {}
 
-    // 3. Regex match any declared function in user's code
-    let detectedName = null;
-    const fnMatch = ${JSON.stringify(userCode)}.match(/(?:function\\s+([a-zA-Z0-9_$]+)|(?:const|let|var)\\s+([a-zA-Z0-9_$]+)\\s*=\\s*(?:function|\\([^)]*\\)\\s*=>|[a-zA-Z0-9_$]+\\s*=>))/);
-    if (fnMatch) {
-      detectedName = fnMatch[1] || fnMatch[2];
-      try {
-        if (detectedName && typeof eval(detectedName) === 'function') {
-          return eval(detectedName);
-        }
-      } catch (e) {}
-    }
+      return null;
+    `);
 
-    return null;
-  `);
-
-  let fn: any = null;
-  try {
-    fn = factory(customConsole);
-  } catch (syntaxErr: any) {
-    return {
-      allPassed: false,
-      tests: [],
-      executionTimeMs: +(performance.now() - startTime).toFixed(2),
-      error: `Syntax or compilation error: ${syntaxErr.message}`,
-      stdout: logs.join('\n')
-    };
-  }
-
-  // If no function was returned, check if user wrote direct top-level statements/script
-  if (typeof fn !== 'function') {
-    // Execute as top-level script safely
+    let fn: any = null;
     try {
-      const scriptRunner = new Function('console', `"use strict";\\n${userCode};`);
-      scriptRunner(customConsole);
-    } catch (e: any) {
-      logs.push(`[Runtime error]: ${e.message}`);
+      fn = factory(customConsole);
+    } catch (syntaxErr: any) {
+      return {
+        allPassed: false,
+        tests: [],
+        executionTimeMs: +(performance.now() - startTime).toFixed(2),
+        error: `Syntax or compilation error: ${syntaxErr.message}`,
+        stdout: logs.join('\n')
+      };
     }
+
+    // Fallback: If named function was not returned, attempt to find any declared function
+    if (typeof fn !== 'function') {
+      try {
+        const fnMatch = userCode.match(/(?:function\s+([a-zA-Z0-9_$]+)|(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:function|\([^)]*\)\s*=>|[a-zA-Z0-9_$]+\s*=>))/);
+        if (fnMatch) {
+          const anyName = fnMatch[1] || fnMatch[2];
+          if (anyName) {
+            const fallbackFactory = new Function('console', `
+              ${userCode}
+              return ${anyName};
+            `);
+            fn = fallbackFactory(customConsole);
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (typeof fn !== 'function') {
+      // Execute as top-level script safely
+      try {
+        const scriptRunner = new Function('console', `${userCode}`);
+        scriptRunner(customConsole);
+      } catch (e: any) {
+        logs.push(`[Runtime error]: ${e.message}`);
+      }
 
       return {
         allPassed: false,
@@ -305,7 +306,7 @@ __fn_found = __target_fn is not None
       await pyodide.runPythonAsync(harnessScript);
 
       const fnFound = pyodide.runPython('__fn_found');
-      const stdout = pyodide.runPython('__captured_stdout') || '';
+      let stdout = pyodide.runPython('__captured_stdout') || '';
 
       if (!fnFound) {
         return {
@@ -322,9 +323,26 @@ __fn_found = __target_fn is not None
       for (const tc of testCases) {
         const inputJson = JSON.stringify(tc.input);
         const testScript = `
-__args = json.loads('''${inputJson}''')
-__res = __target_fn(*__args)
-json.dumps(__res)
+import io, sys, json
+__tc_buf = io.StringIO()
+__prev_out = sys.stdout
+sys.stdout = __tc_buf
+
+try:
+    __args = json.loads('''${inputJson}''')
+    __res = __target_fn(*__args)
+except Exception as __e:
+    __res = str(__e)
+
+sys.stdout = __prev_out
+__tc_logs = __tc_buf.getvalue()
+
+try:
+    __res_json = json.dumps(__res)
+except Exception:
+    __res_json = json.dumps(str(__res))
+
+json.dumps({"res": __res_json, "logs": __tc_logs})
 `;
 
         let actualStr = '';
@@ -332,9 +350,14 @@ json.dumps(__res)
         let errorMsg: string | undefined;
 
         try {
-          actualStr = await pyodide.runPythonAsync(testScript);
-          const parsedActual = JSON.parse(actualStr);
+          const testOutputRaw = await pyodide.runPythonAsync(testScript);
+          const parsedOutput = JSON.parse(testOutputRaw);
+          const parsedActual = JSON.parse(parsedOutput.res);
+          if (parsedOutput.logs) {
+            stdout += (stdout ? '\n' : '') + parsedOutput.logs;
+          }
           passed = deepEqual(parsedActual, tc.expected);
+          actualStr = JSON.stringify(parsedActual);
         } catch (err: any) {
           passed = false;
           errorMsg = err.message || "Python exception";
@@ -414,3 +437,82 @@ function deepEqual(a: any, b: any): boolean {
 
   return JSON.stringify(a) === JSON.stringify(b);
 }
+
+// Execute Python code in the browser and extract UI/HTML output or return values
+export async function runPythonUiCode(
+  code: string,
+  functionName?: string
+): Promise<{
+  html?: string;
+  returnValue?: any;
+  stdout?: string;
+  error?: string;
+}> {
+  const pyodide = await getPyodide();
+  if (!pyodide) {
+    // If Pyodide CDN is blocked, fallback: check if code is returning HTML or DOM strings
+    const match = code.match(/return\s+(['"`])(<[\s\S]+?>)\1/);
+    if (match) {
+      return { html: match[2] };
+    }
+    return {
+      error: "Pyodide WebAssembly runtime is initializing. Please wait a moment and re-run."
+    };
+  }
+
+  // Wrap user python code to capture stdout and check for returned HTML
+  const harness = `
+import sys, io
+
+__py_out = io.StringIO()
+sys.stdout = __py_out
+
+__res = None
+__html = None
+
+# User code execution
+${code}
+
+# Detect UI render function or target function call
+candidate_fns = ['render', 'render_ui', 'render_component', '${functionName || ''}']
+for fn_name in candidate_fns:
+    if fn_name and fn_name in globals() and callable(globals()[fn_name]):
+        try:
+            # Call with zero args if possible
+            __res = globals()[fn_name]()
+            break
+        except TypeError:
+            pass
+        except Exception as e:
+            __res = str(e)
+            break
+
+# Check if returned value is HTML
+if isinstance(__res, str) and ('<' in __res and '>' in __res):
+    __html = __res
+
+__captured_stdout = __py_out.getvalue()
+sys.stdout = sys.__stdout__
+`;
+
+  try {
+    await pyodide.runPythonAsync(harness);
+    const html = pyodide.runPython('__html');
+    const stdout = pyodide.runPython('__captured_stdout');
+    let res = null;
+    try {
+      res = pyodide.runPython('__res');
+    } catch {}
+
+    return {
+      html: html || undefined,
+      returnValue: res !== undefined ? res : null,
+      stdout: stdout || undefined
+    };
+  } catch (err: any) {
+    return {
+      error: err.message || String(err)
+    };
+  }
+}
+

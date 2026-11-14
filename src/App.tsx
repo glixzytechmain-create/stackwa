@@ -145,18 +145,44 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = subscribeToAuth((currentUser) => {
       setUser(currentUser);
-      if (currentUser && !currentUser.isAnonymous) {
+      if (currentUser) {
         loadUserProgress(currentUser.uid).then((progress) => {
           if (progress) {
             if (progress.solvedProblems) setSolvedProblemIds(progress.solvedProblems);
             if (progress.completedUiFlows) setCompletedFlowIds(progress.completedUiFlows);
             if (progress.streakDays) setStreakDays(progress.streakDays);
+            if (progress.goals && Array.isArray(progress.goals) && progress.goals.length > 0) {
+              setGoals(progress.goals);
+              localStorage.setItem('stackwa_interview_goals', JSON.stringify(progress.goals));
+            }
+            if (progress.profile && progress.profile.targetCompany) {
+              setProfile(progress.profile);
+              localStorage.setItem('stackwa_interview_profile', JSON.stringify(progress.profile));
+            }
+            if (progress.roadmap && Array.isArray(progress.roadmap) && progress.roadmap.length > 0) {
+              setRoadmap(progress.roadmap);
+              localStorage.setItem('stackwa_daywise_roadmap', JSON.stringify(progress.roadmap));
+            }
+          } else {
+            // First time login on this account: sync any existing local goals to Firestore
+            const localGoals = localStorage.getItem('stackwa_interview_goals');
+            const localProfile = localStorage.getItem('stackwa_interview_profile');
+            const localRoadmap = localStorage.getItem('stackwa_daywise_roadmap');
+            if (localGoals || localProfile || localRoadmap) {
+              try {
+                saveUserProgress(currentUser.uid, {
+                  goals: localGoals ? JSON.parse(localGoals) : undefined,
+                  profile: localProfile ? JSON.parse(localProfile) : undefined,
+                  roadmap: localRoadmap ? JSON.parse(localRoadmap) : undefined
+                });
+              } catch {}
+            }
           }
         });
       }
     });
 
-    // Load saved goals from local storage
+    // Load saved goals from local storage as initial offline state
     const savedGoals = localStorage.getItem('stackwa_interview_goals');
     if (savedGoals) {
       try {
@@ -262,12 +288,25 @@ export const App: React.FC = () => {
         const withoutSame = prev.filter(g => g.company.toLowerCase() !== newTrack.company.toLowerCase());
         const updated = [newTrack, ...withoutSame];
         localStorage.setItem('stackwa_interview_goals', JSON.stringify(updated));
+        if (user) {
+          saveUserProgress(user.uid, {
+            goals: updated,
+            profile: profileToSave,
+            roadmap: newRoadmap
+          });
+        }
         return updated;
       });
     }
 
     localStorage.setItem('stackwa_interview_profile', JSON.stringify(profileToSave));
     localStorage.setItem('stackwa_daywise_roadmap', JSON.stringify(newRoadmap));
+    if (user) {
+      saveUserProgress(user.uid, {
+        profile: profileToSave,
+        roadmap: newRoadmap
+      });
+    }
     setCurrentView('studio');
     setActiveTab('dsa');
     setActiveTrack(null);
@@ -279,6 +318,9 @@ export const App: React.FC = () => {
     );
     setRoadmap(updated);
     localStorage.setItem('stackwa_daywise_roadmap', JSON.stringify(updated));
+    if (user) {
+      saveUserProgress(user.uid, { roadmap: updated });
+    }
   };
 
   return (

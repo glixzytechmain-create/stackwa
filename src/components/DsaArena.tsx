@@ -15,7 +15,8 @@ import {
   VolumeX, 
   PlusCircle, 
   Eye, 
-  Terminal 
+  Terminal,
+  Sparkles
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -28,6 +29,7 @@ import { RaiseHandModal } from './RaiseHandModal';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
 import { executeCodeStrict, ExecutionOutcome } from '../services/codeExecutionService';
 import { voiceService } from '../services/voiceService';
+import { generateScenarioDsaProblem } from '../services/aiService';
 
 interface DsaArenaProps {
   onSolveProblem: (problemId: string) => void;
@@ -142,13 +144,48 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
 
 
 
+  // Dynamic AI Scenario Generation for any target company
+  const [isGeneratingAiProblem, setIsGeneratingAiProblem] = useState(false);
+
+  const handleGenerateAiProblem = async () => {
+    setIsGeneratingAiProblem(true);
+    try {
+      const company = selectedProblem.companyTags?.[0] || 'Tech';
+      const generated = await generateScenarioDsaProblem(
+        company,
+        'Software Engineer',
+        [selectedProblem.category],
+        selectedProblem.difficulty
+      );
+      setSelectedProblem(generated);
+      setCode(generated.starterCode[language] || generated.starterCode.javascript || '');
+      setTestRun({ isRunning: false, hasRun: false, outcome: null });
+    } catch (e) {
+      console.error("AI question generation failed:", e);
+    } finally {
+      setIsGeneratingAiProblem(false);
+    }
+  };
+
   // Real in-browser JavaScript & Python evaluation engine
   const handleRunCode = async () => {
     setTestRun({ isRunning: true, hasRun: false, outcome: null });
+
+    // Auto-detect language if user pasted Python in JS mode or JS in Python mode
+    let effectiveLang = language;
+    const isPythonPattern = /^\s*(def\s+|import\s+|from\s+|class\s+|#|elif\s+|lambda\s*:)/m.test(code);
+    const isJsPattern = /^\s*(function\s+|const\s+|let\s+|var\s+|\/\/)/m.test(code);
+    if (language === 'javascript' && isPythonPattern && !isJsPattern) {
+      effectiveLang = 'python';
+      setLanguage('python');
+    } else if (language === 'python' && isJsPattern && !isPythonPattern) {
+      effectiveLang = 'javascript';
+      setLanguage('javascript');
+    }
     
     // Strict execution against real test cases
     const outcome = await executeCodeStrict(
-      language,
+      effectiveLang,
       selectedProblem.functionName,
       code,
       selectedProblem.testCases
@@ -160,8 +197,11 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
       outcome
     });
 
-    // Automatically display execution dialogue modal (Terminal / UI Output)
-    setIsPreviewModalOpen(true);
+    // Only open UI preview dialogue automatically if code contains DOM/UI elements
+    const isUiCode = /document\.|innerHTML|createElement|<div>|<button>|className|style|render|return\s*\(|<[A-Z]/i.test(code);
+    if (isUiCode) {
+      setIsPreviewModalOpen(true);
+    }
 
     onUpdateExecutionOutcome?.(outcome, currentUnlockedCount, clarifyingQuestions.length);
 
@@ -242,6 +282,16 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
               </button>
             );
           })}
+
+          <button
+            onClick={handleGenerateAiProblem}
+            disabled={isGeneratingAiProblem}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-300 hover:text-white bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 transition shadow-sm disabled:opacity-50"
+            title="Use Gemini to generate a tailored scenario challenge for this company"
+          >
+            <Sparkles className={`w-3.5 h-3.5 text-rose-400 ${isGeneratingAiProblem ? 'animate-spin' : ''}`} />
+            <span>{isGeneratingAiProblem ? 'Generating...' : '⚡ AI Scenario Question'}</span>
+          </button>
 
           {onOpenCalibration && (
             <button

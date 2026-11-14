@@ -523,3 +523,205 @@ export async function generateAiScorecard(
   return generateAuthenticScorecard(null, problem, '// Candidate Verified Implementation', 'javascript', outcome, 1, completedFlowsCount);
 }
 
+// Dynamically generate authentic, company-specific DSA scenario problems using Gemini
+export async function generateScenarioDsaProblem(
+  company: string,
+  role: string,
+  focusTopics: string[] = ['Algorithms', 'Data Structures'],
+  difficulty: 'Easy' | 'Medium' | 'Hard' = 'Medium'
+): Promise<DsaProblem> {
+  const prompt = `You are a Staff Software Engineer and Interview Lead at ${company} creating an authentic, company-specific algorithmic interview challenge for a ${role} candidate.
+Topics: ${focusTopics.join(', ')}. Difficulty: ${difficulty}.
+
+CRITICAL REQUIREMENTS:
+1. Ground the problem in realistic technical challenges encountered at ${company} (e.g., Stripe -> Webhook deduplication / idempotent ledgers; NVIDIA -> GPU thread block scheduling / tensor buffer tiles; Netflix -> Adaptive bitrate chunk prefetching; Uber -> Geospatial trip batching; Google -> Distributed inverted index / lock-free ring buffers).
+2. DO NOT generate standard textbook questions (e.g. no two sum, no real-time sliding window request arbiter, no invert binary tree).
+3. The problem MUST include 3 to 4 complete, executable test cases with inputs, expected outputs, and readable descriptions.
+4. Function name must be valid camelCase (e.g., \`scheduleKernelWarps\`).
+5. Provide matching JavaScript and Python starter templates with correct argument names.
+6. Provide optimal JavaScript and Python solution implementations that accurately pass all test cases.
+
+Return ONLY valid JSON matching this schema:
+{
+  "id": "${company.toLowerCase().replace(/[^a-z0-9]/g, '-')}-scenario-${Date.now()}",
+  "title": string,
+  "difficulty": "${difficulty}",
+  "category": string,
+  "companyTags": ["${company}"],
+  "description": string (rich 2-paragraph scenario description explaining the production challenge and technical requirements),
+  "functionName": string (valid camelCase identifier),
+  "constraints": [string, string, string, string],
+  "examples": [
+    {
+      "input": string,
+      "output": string,
+      "explanation": string
+    },
+    {
+      "input": string,
+      "output": string,
+      "explanation": string
+    }
+  ],
+  "testCases": [
+    {
+      "title": string,
+      "input": [any] (array of argument values passed to the function),
+      "expected": any (exact return value),
+      "inputStr": string
+    }
+  ],
+  "starterCode": {
+    "javascript": string,
+    "python": string
+  },
+  "solutionCode": {
+    "javascript": string,
+    "python": string
+  },
+  "timeComplexity": string,
+  "spaceComplexity": string,
+  "interviewCakePedagogy": {
+    "conceptBreakdown": string,
+    "commonPitfalls": [string, string]
+  },
+  "hints": [
+    {
+      "id": 1,
+      "tier": "Clarifying Questions",
+      "title": "Vault 1: Input Guarantees & Constraints",
+      "metaClue": string,
+      "content": string,
+      "revealed": false
+    },
+    {
+      "id": 2,
+      "tier": "Data Structure Clue",
+      "title": "Vault 2: Core Invariant",
+      "metaClue": string,
+      "content": string,
+      "revealed": false
+    },
+    {
+      "id": 3,
+      "tier": "Edge Case & Complexity",
+      "title": "Vault 3: Optimization & Proof",
+      "metaClue": string,
+      "content": string,
+      "revealed": false
+    }
+  ]
+}`;
+
+  try {
+    const response = await fetch(getEndpoint(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("No response generated from Gemini API.");
+
+    const generated = JSON.parse(text) as DsaProblem;
+    // Ensure ID is unique and companyTags are preserved
+    generated.id = generated.id || `${company.toLowerCase()}-scenario-${Date.now()}`;
+    generated.companyTags = [company];
+    return generated;
+  } catch (error) {
+    console.error("AI scenario generation error:", error);
+    // Fallback: Generate specialized algorithmic problem for the company
+    return {
+      id: `${company.toLowerCase()}-task-scheduler-${Date.now()}`,
+      title: `${company} High-Throughput Task Sequencer`,
+      difficulty: difficulty,
+      category: 'Concurrency & Priority Queues',
+      companyTags: [company],
+      description: `In ${company}'s production infrastructure, tasks with priority weights and execution deadlines must be dispatched without starving low-priority threads. Given a list of task weights and concurrency limit k, determine the sequence of task IDs that maximizes throughput while respecting starvation intervals.`,
+      functionName: 'schedulePriorityTasks',
+      constraints: [
+        '1 <= tasks.length <= 10^5',
+        '1 <= k <= 1000',
+        'Target Time Complexity: O(n log k)',
+        'Target Space Complexity: O(k)'
+      ],
+      examples: [
+        {
+          input: 'tasks = [5, 2, 8, 1], k = 2',
+          output: '[8, 5, 2, 1]',
+          explanation: 'Tasks sorted by priority weight.'
+        }
+      ],
+      testCases: [
+        {
+          title: 'Test 1: Standard priority ordering',
+          input: [[5, 2, 8, 1], 2],
+          expected: [8, 5, 2, 1],
+          inputStr: 'tasks=[5, 2, 8, 1], k=2'
+        },
+        {
+          title: 'Test 2: Already sorted stream',
+          input: [[10, 20, 30], 1],
+          expected: [30, 20, 10],
+          inputStr: 'tasks=[10, 20, 30], k=1'
+        },
+        {
+          title: 'Test 3: Single task',
+          input: [[42], 1],
+          expected: [42],
+          inputStr: 'tasks=[42], k=1'
+        }
+      ],
+      starterCode: {
+        javascript: `function schedulePriorityTasks(tasks, k) {\n  // Implement priority-weighted scheduler\n  return tasks.slice().sort((a, b) => b - a);\n}`,
+        python: `def schedule_priority_tasks(tasks, k):\n    # Implement priority-weighted scheduler\n    return sorted(tasks, reverse=True)`
+      },
+      solutionCode: {
+        javascript: `function schedulePriorityTasks(tasks, k) {\n  return tasks.slice().sort((a, b) => b - a);\n}`,
+        python: `def schedule_priority_tasks(tasks, k):\n    return sorted(tasks, reverse=True)`
+      },
+      timeComplexity: 'O(n log n)',
+      spaceComplexity: 'O(n)',
+      interviewCakePedagogy: {
+        conceptBreakdown: `Avoid unneeded full re-sorts on live streams by maintaining a bounded heap of size k.`,
+        commonPitfalls: ['Memory reallocation on large task batches', 'Inverting priority order']
+      },
+      hints: [
+        {
+          id: 1,
+          tier: 'Clarifying Questions',
+          title: 'Vault 1: Scale & Memory',
+          metaClue: 'How many tasks can arrive in memory?',
+          content: 'Since k is smaller than total tasks, keep a sliding window heap rather than buffering all tasks.',
+          revealed: false
+        },
+        {
+          id: 2,
+          tier: 'Data Structure Clue',
+          title: 'Vault 2: Max-Heap Invariant',
+          metaClue: 'How to extract top priority in logarithmic time?',
+          content: 'A priority queue ensures max element extraction in O(log k) time.',
+          revealed: false
+        },
+        {
+          id: 3,
+          tier: 'Edge Case & Complexity',
+          title: 'Vault 3: Tie Breaking',
+          metaClue: 'How to handle equal priorities?',
+          content: 'Preserve insertion order (stable sort) when weights are identical.',
+          revealed: false
+        }
+      ]
+    };
+  }
+}
+
+

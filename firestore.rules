@@ -1,0 +1,151 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // GLOBAL AUTHORIZATION HELPERS
+    // =========================================================================
+
+    // Checks if the incoming request is authenticated (standard or anonymous)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Checks if the authenticated user owns the document (UID matches route userId)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Ensures critical identity and audit fields remain immutable on updates
+    function isUserImmutable() {
+      return (!('userId' in resource.data) || !('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId)
+          && (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id)
+          && (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // Ensures question identity and audit fields remain immutable on updates
+    function isQuestionImmutable() {
+      return (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id)
+          && (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // =========================================================================
+    // DOMAIN VALIDATORS & TYPE GUARDS
+    // =========================================================================
+
+    // Validates nested user profile object and bounds
+    function isValidProfile(profile) {
+      return profile is map
+        && profile.size() <= 30
+        && (!('targetCompany' in profile) || (profile.targetCompany is string && profile.targetCompany.size() <= 100))
+        && (!('role' in profile) || (profile.role is string && profile.role.size() <= 100))
+        && (!('seniority' in profile) || (profile.seniority is string && profile.seniority.size() <= 50))
+        && (!('interviewDate' in profile) || (profile.interviewDate is string && profile.interviewDate.size() <= 50))
+        && (!('daysRemaining' in profile) || (profile.daysRemaining is int && profile.daysRemaining >= 0 && profile.daysRemaining <= 3650))
+        && (!('focusAreas' in profile) || (profile.focusAreas is list && profile.focusAreas.size() <= 20))
+        && (!('calendarConnected' in profile) || profile.calendarConnected is bool)
+        && (!('onboardingCompleted' in profile) || profile.onboardingCompleted is bool)
+        && (!('isGeneralPractice' in profile) || profile.isGeneralPractice is bool)
+        && (!('userSet' in profile) || profile.userSet is bool);
+    }
+
+    // Validates the full user account state document schema and bounds
+    function isValidUserDoc(data, userId) {
+      return data.keys().hasOnly([
+          'goals',
+          'profile',
+          'roadmap',
+          'solvedProblems',
+          'completedUiFlows',
+          'streakDays',
+          'lastActive',
+          'interviewScore',
+          'generatedQuestions',
+          'updatedAt',
+          'createdAt',
+          'userId',
+          'id'
+        ])
+        && (!('userId' in data) || (data.userId is string && data.userId == userId))
+        && (!('id' in data) || (data.id is string && data.id == userId))
+        && (!('goals' in data) || (data.goals is list && data.goals.size() <= 50))
+        && (!('profile' in data) || isValidProfile(data.profile))
+        && (!('roadmap' in data) || (data.roadmap is list && data.roadmap.size() <= 100))
+        && (!('solvedProblems' in data) || (data.solvedProblems is list && data.solvedProblems.size() <= 1000))
+        && (!('completedUiFlows' in data) || (data.completedUiFlows is list && data.completedUiFlows.size() <= 1000))
+        && (!('streakDays' in data) || (data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 10000))
+        && (!('lastActive' in data) || (data.lastActive is string && data.lastActive.size() <= 100))
+        && (!('interviewScore' in data) || ((data.interviewScore is int || data.interviewScore is float) && data.interviewScore >= 0 && data.interviewScore <= 100))
+        && (!('generatedQuestions' in data) || (data.generatedQuestions is map && data.generatedQuestions.size() <= 500))
+        && (!('updatedAt' in data) || ((data.updatedAt is string && data.updatedAt.size() <= 100) || data.updatedAt is timestamp))
+        && (!('createdAt' in data) || ((data.createdAt is string && data.createdAt.size() <= 100) || data.createdAt is timestamp));
+    }
+
+    // Validates generated question document schema (when stored as a subcollection)
+    function isValidQuestionDoc(data, questionId) {
+      return data.size() <= 35
+        && (!('id' in data) || (data.id is string && (data.id == questionId || data.id.size() <= 128)))
+        && (!('title' in data) || (data.title is string && data.title.size() <= 300))
+        && (!('difficulty' in data) || (data.difficulty is string && data.difficulty.size() <= 50))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 100))
+        && (!('company' in data) || (data.company is string && data.company.size() <= 100))
+        && (!('role' in data) || (data.role is string && data.role.size() <= 100))
+        && (!('topic' in data) || (data.topic is string && data.topic.size() <= 100))
+        && (!('description' in data) || (data.description is string && data.description.size() <= 30000))
+        && (!('functionName' in data) || (data.functionName is string && data.functionName.size() <= 100))
+        && (!('companyTags' in data) || (data.companyTags is list && data.companyTags.size() <= 20))
+        && (!('testCases' in data) || (data.testCases is list && data.testCases.size() <= 50))
+        && (!('examples' in data) || (data.examples is list && data.examples.size() <= 30))
+        && (!('constraints' in data) || (data.constraints is list && data.constraints.size() <= 30))
+        && (!('hints' in data) || (data.hints is list && data.hints.size() <= 30))
+        && (!('starterCode' in data) || (data.starterCode is map && data.starterCode.size() <= 10))
+        && (!('solutionCode' in data) || (data.solutionCode is map && data.solutionCode.size() <= 10))
+        && (!('timeComplexity' in data) || (data.timeComplexity is string && data.timeComplexity.size() <= 100))
+        && (!('spaceComplexity' in data) || (data.spaceComplexity is string && data.spaceComplexity.size() <= 100))
+        && (!('interviewCakePedagogy' in data) || (data.interviewCakePedagogy is map && data.interviewCakePedagogy.size() <= 10))
+        && (!('scrimbaEmbedId' in data) || (data.scrimbaEmbedId is string && data.scrimbaEmbedId.size() <= 100))
+        && (!('question' in data) || (data.question is string && data.question.size() <= 5000))
+        && (!('answer' in data) || (data.answer is string && data.answer.size() <= 10000))
+        && (!('timestamp' in data) || (data.timestamp is string && data.timestamp.size() <= 100))
+        && (!('createdAt' in data) || ((data.createdAt is string && data.createdAt.size() <= 100) || data.createdAt is timestamp))
+        && (!('updatedAt' in data) || ((data.updatedAt is string && data.updatedAt.size() <= 100) || data.updatedAt is timestamp));
+    }
+
+    // =========================================================================
+    // COLLECTION ACCESS RULES
+    // =========================================================================
+
+    // Users Collection: users/{userId}
+    match /users/{userId} {
+      // Owners (authenticated or anonymous with matching UID) can read their user document
+      allow get, list: if isOwner(userId);
+
+      // Create rule validates owner identity and enforces strict schema & type safety
+      allow create: if isOwner(userId) && isValidUserDoc(request.resource.data, userId);
+
+      // Update rule validates owner identity, schema, types, and immutability invariants
+      allow update: if isOwner(userId) && isValidUserDoc(request.resource.data, userId) && isUserImmutable();
+
+      // Owners can delete their own user document
+      allow delete: if isOwner(userId);
+
+      // Subcollection: users/{userId}/generatedQuestions/{questionId}
+      match /generatedQuestions/{questionId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidQuestionDoc(request.resource.data, questionId);
+        allow update: if isOwner(userId) && isValidQuestionDoc(request.resource.data, questionId) && isQuestionImmutable();
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // =========================================================================
+    // DEFAULT DENY ROOT
+    // =========================================================================
+
+    // Deny read and write access to all other paths by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

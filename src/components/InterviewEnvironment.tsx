@@ -29,7 +29,7 @@ import { InterviewTrack, GoalSectionTab } from './InterviewCard';
 import { DSA_PROBLEMS } from '../data/dsaProblems';
 import { UI_CHALLENGES } from '../data/uiFlows';
 import { executeCodeStrict, ExecutionOutcome } from '../services/codeExecutionService';
-import { askAiCoach } from '../services/aiService';
+import { askAiCoach, generateScenarioDsaProblem } from '../services/aiService';
 import { sendAnakinChatMessage } from '../services/anakinService';
 import { ScrimbaPlayer } from './ScrimbaPlayer';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
@@ -135,6 +135,31 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setCode(starter);
   };
 
+  // Dynamic AI Scenario Generation (No generic preloaded questions)
+  const [isGeneratingAiProblem, setIsGeneratingAiProblem] = useState(false);
+
+  const handleGenerateDynamicProblem = async () => {
+    setIsGeneratingAiProblem(true);
+    try {
+      const generated = await generateScenarioDsaProblem(
+        track.company,
+        track.role || 'Software Engineer',
+        track.focusTopics && track.focusTopics.length > 0 ? track.focusTopics : ['Algorithms', 'Distributed Invariants'],
+        track.difficulty === 'FAANG-Caliber' ? 'Medium' : 'Medium'
+      );
+      setSelectedProblem(generated);
+      const starter = typeof generated.starterCode === 'string'
+        ? generated.starterCode
+        : (generated.starterCode[language] || generated.starterCode.javascript || '');
+      setCode(starter);
+      setTestRun({ isRunning: false, hasRun: false, outcome: null });
+    } catch (err) {
+      console.error("AI question generation failed:", err);
+    } finally {
+      setIsGeneratingAiProblem(false);
+    }
+  };
+
   // Mobbin UI Round 2 State
   const [selectedUiChallenge, setSelectedUiChallenge] = useState(UI_CHALLENGES[0]);
   const [activeUiSection, setActiveUiSection] = useState<'hierarchy' | 'state' | 'edge-cases' | 'quiz'>('hierarchy');
@@ -197,9 +222,21 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   const handleRunCode = async () => {
     setTestRun({ isRunning: true, hasRun: false, outcome: null });
 
+    // Auto-detect language if user pasted Python in JS mode or JS in Python mode
+    let effectiveLang = language;
+    const isPythonPattern = /^\s*(def\s+|import\s+|from\s+|class\s+|#|elif\s+|lambda\s*:)/m.test(code);
+    const isJsPattern = /^\s*(function\s+|const\s+|let\s+|var\s+|\/\/)/m.test(code);
+    if (language === 'javascript' && isPythonPattern && !isJsPattern) {
+      effectiveLang = 'python';
+      setLanguage('python');
+    } else if (language === 'python' && isJsPattern && !isPythonPattern) {
+      effectiveLang = 'javascript';
+      setLanguage('javascript');
+    }
+
     try {
       const outcome = await executeCodeStrict(
-        language,
+        effectiveLang,
         selectedProblem.functionName,
         code,
         selectedProblem.testCases
@@ -211,8 +248,11 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
         outcome
       });
 
-      // Automatically open live UI & Execution preview dialogue box
-      setIsPreviewModalOpen(true);
+      // Only open UI preview dialogue automatically if code contains DOM/UI elements
+      const isUiCode = /document\.|innerHTML|createElement|<div>|<button>|className|style|render|return\s*\(|<[A-Z]/i.test(code);
+      if (isUiCode) {
+        setIsPreviewModalOpen(true);
+      }
 
       if (outcome.allPassed) {
         try {
@@ -529,11 +569,30 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
           >
             {/* Left: Problem Spec (5 cols) */}
             <div className="lg:col-span-5 oled-panel rounded-2xl p-6 border border-white/10 space-y-4 max-h-[640px] overflow-y-auto">
-              <div className="flex items-center justify-between">
-                <span className="text-xs px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold font-mono">
-                  {selectedProblem.category}
-                </span>
-                <span className="text-xs font-mono text-neutral-400">Target: {selectedProblem.timeComplexity}</span>
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold font-mono">
+                    {selectedProblem.category}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300 font-mono">
+                    {track.company}
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleGenerateDynamicProblem}
+                  disabled={isGeneratingAiProblem}
+                  className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-[11px] font-mono transition shadow-sm disabled:opacity-50"
+                  title={`Generate fresh tailored challenge for ${track.company}`}
+                >
+                  <Sparkles className={`w-3.5 h-3.5 text-rose-400 ${isGeneratingAiProblem ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingAiProblem ? 'Generating...' : '⚡ AI Scenario Question'}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-mono text-neutral-400">
+                <span>Scenario Challenge</span>
+                <span>Target: <strong className="text-white">{selectedProblem.timeComplexity}</strong></span>
               </div>
 
               <h3 className="text-lg font-extrabold text-white tracking-tight">{selectedProblem.title}</h3>
@@ -668,6 +727,33 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                         </button>
                       </div>
                     </div>
+
+                    {/* Individual Test Assertions */}
+                    {testRun.outcome.tests.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+                        {testRun.outcome.tests.map((t, idx) => (
+                          <div 
+                            key={idx}
+                            className={`p-2.5 rounded-xl border ${
+                              t.passed 
+                                ? 'bg-emerald-950/20 border-emerald-500/30' 
+                                : 'bg-rose-950/20 border-rose-500/30'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[11px] mb-1">
+                              <span className="font-bold text-white truncate mr-1">{t.title}</span>
+                              <span className={t.passed ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                                {t.passed ? '✓ PASS' : '✗ FAIL'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-neutral-400 space-y-0.5">
+                              <div className="truncate">Expected: <span className="text-emerald-300 font-mono">{t.expected}</span></div>
+                              <div className="truncate">Actual: <span className={t.passed ? 'text-neutral-200 font-mono' : 'text-rose-300 font-mono'}>{t.actual}</span></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Backend Stdout logs */}
                     {testRun.outcome.stdout && (

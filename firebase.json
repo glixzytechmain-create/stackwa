@@ -12,5 +12,15 @@
         "destination": "/index.html"
       }
     ]
-  }
+  },
+  "firestore": [
+    {
+      "database": "ai-studio-bizovistaimanufa-3efa9451-770e-4279-b012-a145b3bf179d",
+      "rules": "firestore.rules"
+    },
+    {
+      "database": "(default)",
+      "rules": "firestore.rules"
+    }
+  ]
 }

@@ -33,7 +33,8 @@ let db: Firestore;
 try {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
   auth = getAuth(app);
-  db = getFirestore(app);
+  const databaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-bizovistaimanufa-3efa9451-770e-4279-b012-a145b3bf179d';
+  db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 } catch (error) {
   console.warn("Firebase initialization warning (running in resilient mode):", error);
 }
@@ -79,46 +80,51 @@ export function subscribeToAuth(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback);
 }
 
-// Firestore Progress Sync
+// Firestore Progress & Multi-Device Account Sync
 export interface UserProgressData {
-  solvedProblems: string[];
-  completedUiFlows: string[];
-  streakDays: number;
-  lastActive: string;
-  interviewScore: number;
+  goals?: any[];
+  profile?: any;
+  roadmap?: any[];
+  solvedProblems?: string[];
+  completedUiFlows?: string[];
+  streakDays?: number;
+  lastActive?: string;
+  interviewScore?: number;
+  generatedQuestions?: Record<string, any>;
+  settings?: any;
 }
 
 export async function saveUserProgress(userId: string, data: Partial<UserProgressData>) {
   try {
-    if (!db) {
-      // LocalStorage fallback
-      const prev = JSON.parse(localStorage.getItem(`stackwa_progress_${userId}`) || '{}');
-      localStorage.setItem(`stackwa_progress_${userId}`, JSON.stringify({ ...prev, ...data }));
-      return;
-    }
+    // Always mirror to localStorage as offline cache
+    const prev = JSON.parse(localStorage.getItem(`stackwa_account_${userId}`) || '{}');
+    const merged = { ...prev, ...data, updatedAt: new Date().toISOString() };
+    localStorage.setItem(`stackwa_account_${userId}`, JSON.stringify(merged));
+
+    if (!db) return;
     const userRef = doc(db, 'users', userId);
-    await setDoc(userRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(userRef, merged, { merge: true });
   } catch (e) {
     console.warn("Firestore save fallback to local storage:", e);
-    const prev = JSON.parse(localStorage.getItem(`stackwa_progress_${userId}`) || '{}');
-    localStorage.setItem(`stackwa_progress_${userId}`, JSON.stringify({ ...prev, ...data }));
   }
 }
 
 export async function loadUserProgress(userId: string): Promise<UserProgressData | null> {
   try {
-    if (!db) {
-      return JSON.parse(localStorage.getItem(`stackwa_progress_${userId}`) || 'null');
+    if (db) {
+      const userRef = doc(db, 'users', userId);
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const data = snap.data() as UserProgressData;
+        // Keep local cache fresh
+        localStorage.setItem(`stackwa_account_${userId}`, JSON.stringify(data));
+        return data;
+      }
     }
-    const userRef = doc(db, 'users', userId);
-    const snap = await getDoc(userRef);
-    if (snap.exists()) {
-      return snap.data() as UserProgressData;
-    }
-    return JSON.parse(localStorage.getItem(`stackwa_progress_${userId}`) || 'null');
+    return JSON.parse(localStorage.getItem(`stackwa_account_${userId}`) || 'null');
   } catch (e) {
     console.warn("Firestore load fallback to local storage:", e);
-    return JSON.parse(localStorage.getItem(`stackwa_progress_${userId}`) || 'null');
+    return JSON.parse(localStorage.getItem(`stackwa_account_${userId}`) || 'null');
   }
 }
 
