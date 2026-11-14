@@ -27,7 +27,9 @@ import {
   RefreshCw,
   Award,
   X,
-  ExternalLink
+  ExternalLink,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
@@ -44,7 +46,7 @@ import {
   StepByStepFix, 
   SessionBlueprint 
 } from '../services/aiService';
-import { generateInteractiveGraphic } from '../services/generativeUiService';
+import { generateInteractiveGraphic, getCachedVisualGraphic, setCachedVisualGraphic } from '../services/generativeUiService';
 import { MonacoTypingEffectOverlay } from './MonacoTypingEffectOverlay';
 import { sendAnakinChatMessage } from '../services/anakinService';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
@@ -148,6 +150,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   const [generativeHtml, setGenerativeHtml] = useState<string | null>(null);
   const [isGeneratingVisual, setIsGeneratingVisual] = useState<boolean>(false);
   const [showGenerativeVisual, setShowGenerativeVisual] = useState<boolean>(false);
+  const [isVisualFullScreen, setIsVisualFullScreen] = useState<boolean>(false);
 
   // Custom Curated Config
   const [customConfig, setCustomConfig] = useState({
@@ -190,6 +193,105 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     hasRun: false,
     outcome: null
   });
+
+  // Timer Countdown (15m, 30m, 45m)
+  const totalSeconds = track.intensity === '15m' ? 900 : track.intensity === '30m' ? 1800 : 2700;
+  const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
+  const [isTimerRunning] = useState(true);
+
+  // Persistent Storage Key for active rehearsal session
+  const activeSessionKey = `stackwa_active_rehearsal_${track.company.toLowerCase()}`;
+
+  // Restore active rehearsal session from localStorage on mount (e.g. after browser refresh)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(activeSessionKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.isSessionActive && Array.isArray(parsed.batchQuestions) && parsed.batchQuestions.length > 0) {
+          setBatchQuestions(parsed.batchQuestions);
+          setActiveSessionMode(parsed.activeSessionMode || 'ai-suggested');
+          setBatchNumber(parsed.batchNumber || 1);
+          const qIdx = typeof parsed.currentQuestionIndex === 'number' ? parsed.currentQuestionIndex : 0;
+          setCurrentQuestionIndex(qIdx);
+          if (Array.isArray(parsed.solvedQuestionIds)) {
+            setSolvedQuestionIds(new Set(parsed.solvedQuestionIds));
+          }
+          if (parsed.questionCodeMap) {
+            setQuestionCodeMap(parsed.questionCodeMap);
+          }
+          if (parsed.secondsLeft && parsed.secondsLeft > 0) {
+            setSecondsLeft(parsed.secondsLeft);
+          }
+          if (parsed.language) {
+            setLanguage(parsed.language);
+          }
+          const activeProblem = parsed.batchQuestions[qIdx] || parsed.batchQuestions[0];
+          if (activeProblem) {
+            setSelectedProblem(activeProblem);
+            const savedCode = parsed.code ?? parsed.questionCodeMap?.[activeProblem.id]?.[parsed.language || 'javascript'] ?? '';
+            setCode(savedCode);
+            setHasTypedYet(savedCode.trim().length > 0);
+
+            // Restore cached visual graphic if present
+            const cachedVisual = getCachedVisualGraphic(activeProblem.id);
+            if (cachedVisual) {
+              setGenerativeHtml(cachedVisual);
+              if (parsed.showGenerativeVisual) {
+                setShowGenerativeVisual(true);
+              }
+            }
+          }
+          setIsSessionActive(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to restore session from localStorage:", e);
+    }
+  }, [activeSessionKey]);
+
+  // Persist session state whenever code, questions, or progress changes
+  useEffect(() => {
+    if (isSessionActive && batchQuestions.length > 0) {
+      const dataToSave = {
+        isSessionActive: true,
+        activeSessionMode,
+        batchNumber,
+        batchQuestions,
+        currentQuestionIndex,
+        solvedQuestionIds: Array.from(solvedQuestionIds),
+        questionCodeMap: {
+          ...questionCodeMap,
+          [selectedProblem.id]: {
+            ...(questionCodeMap[selectedProblem.id] || { javascript: '', python: '' }),
+            [language]: code
+          }
+        },
+        code,
+        language,
+        secondsLeft,
+        showGenerativeVisual,
+        selectedProblemId: selectedProblem.id
+      };
+      try {
+        localStorage.setItem(activeSessionKey, JSON.stringify(dataToSave));
+      } catch {}
+    }
+  }, [
+    isSessionActive,
+    activeSessionMode,
+    batchNumber,
+    batchQuestions,
+    currentQuestionIndex,
+    solvedQuestionIds,
+    questionCodeMap,
+    code,
+    language,
+    secondsLeft,
+    showGenerativeVisual,
+    selectedProblem.id,
+    activeSessionKey
+  ]);
 
   // Language switch handler
   const handleSwitchLanguage = (newLang: 'javascript' | 'python') => {
@@ -333,8 +435,14 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setShowAiFixPanel(false);
     setAiFixData(null);
     setTestRun({ isRunning: false, hasRun: false, outcome: null });
-    setGenerativeHtml(null);
-    setShowGenerativeVisual(false);
+    // Restore cached visual graphic if available for this problem
+    const cachedGraphic = getCachedVisualGraphic(nextProblem.id);
+    if (cachedGraphic) {
+      setGenerativeHtml(cachedGraphic);
+    } else {
+      setGenerativeHtml(null);
+      setShowGenerativeVisual(false);
+    }
 
     // Restore saved code if exists, otherwise keep empty for typing placeholder
     const saved = questionCodeMap[nextProblem.id]?.[language];
@@ -413,11 +521,20 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
       return;
     }
     setShowGenerativeVisual(true);
+
+    // Check persistent cache first so user never needs to regenerate
+    const cached = getCachedVisualGraphic(selectedProblem.id);
+    if (cached) {
+      setGenerativeHtml(cached);
+      return;
+    }
+
     if (!generativeHtml) {
       setIsGeneratingVisual(true);
       try {
         const html = await generateInteractiveGraphic(selectedProblem, track.company);
         setGenerativeHtml(html);
+        setCachedVisualGraphic(selectedProblem.id, html);
       } catch (err) {
         console.error("Generative UI generation failed:", err);
       } finally {
@@ -451,6 +568,12 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     if (onSaveTestRecord) {
       onSaveTestRecord(record);
     }
+
+    // Clear active session from localStorage on submit
+    try {
+      localStorage.removeItem(activeSessionKey);
+    } catch {}
+
     setSubmittedRecord(record);
     setIsSubmitting(false);
     setShowSubmitModal(true);
@@ -474,11 +597,6 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isRaiseHandOpen, setIsRaiseHandOpen] = useState(false);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<InterviewClarifyingQuestion[]>([]);
-
-  // Timer Countdown (15m, 30m, 45m)
-  const totalSeconds = track.intensity === '15m' ? 900 : track.intensity === '30m' ? 1800 : 2700;
-  const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
-  const [isTimerRunning] = useState(true);
 
   // Architecture MCQ State
   const [mcqList] = useState<McqQuestion[]>(DEFAULT_MCQS);
@@ -1284,19 +1402,48 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                       </button>
 
                       {showGenerativeVisual && (
-                        <div className="rounded-2xl border border-white/10 bg-black/80 overflow-hidden p-3 space-y-2">
+                        <div className="rounded-2xl border border-white/10 bg-black/80 overflow-hidden p-3 space-y-2.5">
                           <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400">
                             <span className="flex items-center space-x-1.5 text-rose-400 font-bold">
                               <Sparkles className="w-3.5 h-3.5" />
                               <span>Step-by-Step Visual Execution Model</span>
                             </span>
-                            {isGeneratingVisual && (
-                              <span className="text-amber-400 flex items-center space-x-1 animate-pulse">
-                                <RefreshCw className="w-3 h-3 animate-spin" />
-                                <span>Synthesizing...</span>
-                              </span>
-                            )}
+                            <div className="flex items-center space-x-2">
+                              {isGeneratingVisual && (
+                                <span className="text-amber-400 flex items-center space-x-1 animate-pulse">
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <span>Synthesizing...</span>
+                                </span>
+                              )}
+                              {generativeHtml && (
+                                <button
+                                  onClick={() => setIsVisualFullScreen(true)}
+                                  className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 font-bold text-[10px] uppercase transition shadow-sm"
+                                  title="Expand to Fullscreen"
+                                >
+                                  <Maximize2 className="w-3 h-3" />
+                                  <span>Fullscreen</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
+
+                          {/* Fullscreen Suggestion Prompt Banner */}
+                          {generativeHtml && !isGeneratingVisual && (
+                            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-rose-950/40 via-neutral-900 to-black border border-rose-500/30 text-[11px] font-mono text-rose-300">
+                              <span className="flex items-center space-x-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                <span>💡 Pro-Tip: Open in Full Screen for the best step-by-step visual intuition!</span>
+                              </span>
+                              <button
+                                onClick={() => setIsVisualFullScreen(true)}
+                                className="shrink-0 flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] uppercase transition shadow-md shadow-rose-600/30"
+                              >
+                                <Maximize2 className="w-3 h-3" />
+                                <span>Watch Fullscreen</span>
+                              </button>
+                            </div>
+                          )}
 
                           {isGeneratingVisual ? (
                             <div className="h-64 flex flex-col items-center justify-center space-y-3 bg-neutral-950/60 rounded-xl">
@@ -2234,6 +2381,9 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                 </button>
                 <button
                   onClick={() => {
+                    try {
+                      localStorage.removeItem(activeSessionKey);
+                    } catch {}
                     setShowExitModal(false);
                     setIsSessionActive(false);
                     onExit();
@@ -2335,6 +2485,66 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                 </button>
               </div>
             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ================= GENERATIVE UI FULLSCREEN VIEW ================= */}
+      <AnimatePresence>
+        {isVisualFullScreen && generativeHtml && (
+          <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col p-4 sm:p-6 overflow-hidden">
+            {/* Fullscreen Top Navigation Bar */}
+            <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setIsVisualFullScreen(false)}
+                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition shadow-lg shadow-rose-600/30"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back to Sandbox</span>
+                </button>
+                <div>
+                  <div className="flex items-center space-x-2.5">
+                    <span className="text-xs px-2.5 py-0.5 rounded-md bg-rose-500/15 text-rose-400 border border-rose-500/30 font-bold font-mono">
+                      {track.company} • {selectedProblem.category}
+                    </span>
+                    <h3 className="text-base font-extrabold text-white tracking-tight">
+                      {selectedProblem.title}
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+                    Interactive Step-by-Step Invariant Model • Native HTML5 / Canvas Engine
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setIsVisualFullScreen(false)}
+                  className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-white/10 text-xs font-mono transition"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                  <span>Exit Fullscreen</span>
+                </button>
+                <button
+                  onClick={() => setIsVisualFullScreen(false)}
+                  className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-white/10 transition"
+                  title="Close Fullscreen"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Fullscreen Iframe Surface */}
+            <div className="flex-1 w-full mt-4 rounded-2xl border border-white/10 bg-neutral-950 overflow-hidden shadow-2xl relative">
+              <iframe
+                srcDoc={generativeHtml}
+                title={`${selectedProblem.title} - Fullscreen Visual Model`}
+                sandbox="allow-scripts"
+                className="w-full h-full border-0"
+              />
+            </div>
           </div>
         )}
       </AnimatePresence>

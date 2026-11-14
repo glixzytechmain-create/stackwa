@@ -192,11 +192,43 @@ function getFallbackGenerativeHtml(title: string, company: string): string {
 </html>`;
 }
 
+const CACHE_PREFIX = 'stackwa_generative_visual_';
+
+// Retrieve cached visual graphic from localStorage
+export function getCachedVisualGraphic(problemId: string): string | null {
+  try {
+    const cached = localStorage.getItem(`${CACHE_PREFIX}${problemId}`);
+    if (cached && (cached.startsWith('<!DOCTYPE') || cached.includes('<html'))) {
+      return cached;
+    }
+  } catch (e) {
+    console.warn("Error reading cached visual:", e);
+  }
+  return null;
+}
+
+// Persist visual graphic to localStorage cache
+export function setCachedVisualGraphic(problemId: string, html: string): void {
+  try {
+    if (html && (html.startsWith('<!DOCTYPE') || html.includes('<html'))) {
+      localStorage.setItem(`${CACHE_PREFIX}${problemId}`, html);
+    }
+  } catch (e) {
+    console.warn("Storage quota or error saving visual to cache:", e);
+  }
+}
+
 // Dynamically generate self-contained HTML5/SVG motion graphic using Gemini 3.8 Flash
 export async function generateInteractiveGraphic(
   problem: DsaProblem,
   company: string = 'Tech'
 ): Promise<string> {
+  // Check persistent cache first so user never has to regenerate upon refresh
+  const cached = getCachedVisualGraphic(problem.id);
+  if (cached) {
+    return cached;
+  }
+
   const prompt = `You are an expert motion graphics and algorithmic visualization engineer.
 A software engineering candidate is solving the following technical challenge:
 Title: ${problem.title}
@@ -233,6 +265,7 @@ REQUIREMENTS:
       // Strip markdown code fences if model enclosed them
       rawText = rawText.replace(/^```html\s*/i, '').replace(/```$/i, '').trim();
       if (rawText.startsWith('<!DOCTYPE') || rawText.includes('<html')) {
+        setCachedVisualGraphic(problem.id, rawText);
         return rawText;
       }
     }
@@ -240,5 +273,7 @@ REQUIREMENTS:
     console.warn("Generative UI fallback engaged:", err);
   }
 
-  return getFallbackGenerativeHtml(problem.title, company);
+  const fallback = getFallbackGenerativeHtml(problem.title, company);
+  setCachedVisualGraphic(problem.id, fallback);
+  return fallback;
 }
