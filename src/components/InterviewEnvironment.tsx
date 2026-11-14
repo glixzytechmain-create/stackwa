@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, 
   Clock, 
@@ -16,11 +16,16 @@ import {
   Cpu,
   CheckCircle2,
   Box,
-  AlertTriangle
+  AlertTriangle,
+  Calendar,
+  BarChart3,
+  Terminal,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DsaProblem, InterviewClarifyingQuestion } from '../types';
-import { InterviewTrack } from './InterviewCard';
+import Editor from '@monaco-editor/react';
+import { DsaProblem, InterviewClarifyingQuestion, UserInterviewProfile, DayPlan } from '../types';
+import { InterviewTrack, GoalSectionTab } from './InterviewCard';
 import { DSA_PROBLEMS } from '../data/dsaProblems';
 import { UI_CHALLENGES } from '../data/uiFlows';
 import { executeCodeStrict, ExecutionOutcome } from '../services/codeExecutionService';
@@ -29,13 +34,23 @@ import { sendAnakinChatMessage } from '../services/anakinService';
 import { ScrimbaPlayer } from './ScrimbaPlayer';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
 import { RaiseHandModal } from './RaiseHandModal';
-import { TypingSparksOverlay } from './TypingSparksOverlay';
+import { RoadmapView } from './RoadmapView';
+import { AiMockRoom } from './AiMockRoom';
+import { ProgressDashboard } from './ProgressDashboard';
 import confetti from 'canvas-confetti';
 
 interface InterviewEnvironmentProps {
   track: InterviewTrack;
   onExit: () => void;
   customProblems?: DsaProblem[];
+  initialTab?: GoalSectionTab;
+  profile?: UserInterviewProfile | null;
+  roadmap?: DayPlan[];
+  onToggleDay?: (dayNumber: number) => void;
+  onOpenSettings?: () => void;
+  solvedCount?: number;
+  completedFlowsCount?: number;
+  streakDays?: number;
 }
 
 export type QuestionMode = 'code' | 'mobbin-ui' | 'mcq' | 'system-reasoning';
@@ -78,11 +93,26 @@ const DEFAULT_MCQS: McqQuestion[] = [
 export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   track,
   onExit,
-  customProblems = []
+  customProblems = [],
+  initialTab = 'rehearsal',
+  profile = null,
+  roadmap = [],
+  onToggleDay,
+  onOpenSettings,
+  solvedCount = 0,
+  completedFlowsCount = 0,
+  streakDays = 1
 }) => {
   const problems = [...customProblems, ...DSA_PROBLEMS];
   const [selectedProblem, setSelectedProblem] = useState<DsaProblem>(problems[0]);
   const [questionMode, setQuestionMode] = useState<QuestionMode>('code');
+  const [workspaceTab, setWorkspaceTab] = useState<GoalSectionTab>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setWorkspaceTab(initialTab);
+    }
+  }, [initialTab]);
   
   const [language, setLanguage] = useState<'javascript' | 'python'>('javascript');
   const [code, setCode] = useState<string>(
@@ -119,7 +149,6 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   const [isRaiseHandOpen, setIsRaiseHandOpen] = useState(false);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<InterviewClarifyingQuestion[]>([]);
   const [showScrimbaExplainer, setShowScrimbaExplainer] = useState(false);
-  const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Timer Countdown (15m, 30m, 45m)
   const totalSeconds = track.intensity === '15m' ? 900 : track.intensity === '30m' ? 1800 : 2700;
@@ -351,81 +380,142 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
 
           <div>
             <div className="flex items-center space-x-2">
-              <h2 className="text-base font-extrabold text-white tracking-tight">{track.company} Environment</h2>
+              <h2 className="text-base font-extrabold text-white tracking-tight">{track.company} Workspace</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono font-bold">
                 {track.role}
               </span>
             </div>
-            <p className="text-[11px] text-neutral-400 font-mono">Scoped Interview Session • Live Invariant Engine</p>
+            <p className="text-[11px] text-neutral-400 font-mono">Dedicated Company Track • Live Rehearsal, Syllabus & AI Lead</p>
           </div>
         </div>
 
-        {/* Center: Interview Rounds (DSA, Mobbin UI, System MCQ, Socratic Defense) */}
-        <div className="flex items-center p-1 rounded-xl bg-black/60 border border-white/10 text-xs font-mono">
+        {/* Center: Company-Scoped Workspace Navigation */}
+        <div className="flex items-center p-1 rounded-2xl bg-black/70 border border-white/10 text-xs font-mono">
           <button
-            onClick={() => setQuestionMode('code')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition ${
-              questionMode === 'code' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
+            onClick={() => setWorkspaceTab('rehearsal')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition ${
+              workspaceTab === 'rehearsal' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
             }`}
           >
-            <Code2 className="w-3.5 h-3.5" />
-            <span>1. Code</span>
+            <Zap className="w-3.5 h-3.5" />
+            <span>1. Rehearsal Screen</span>
           </button>
 
           <button
-            onClick={() => setQuestionMode('mobbin-ui')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition ${
-              questionMode === 'mobbin-ui' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
+            onClick={() => setWorkspaceTab('roadmap')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition ${
+              workspaceTab === 'roadmap' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
             }`}
           >
-            <Layout className="w-3.5 h-3.5" />
-            <span>2. Mobbin UI</span>
+            <Calendar className="w-3.5 h-3.5" />
+            <span>2. Company Roadmap</span>
           </button>
 
           <button
-            onClick={() => setQuestionMode('mcq')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition ${
-              questionMode === 'mcq' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
+            onClick={() => setWorkspaceTab('coach')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition ${
+              workspaceTab === 'coach' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>3. System MCQ</span>
+            <Bot className="w-3.5 h-3.5" />
+            <span>3. AI Coach</span>
           </button>
 
           <button
-            onClick={() => setQuestionMode('system-reasoning')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition ${
-              questionMode === 'system-reasoning' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
+            onClick={() => setWorkspaceTab('readiness')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition ${
+              workspaceTab === 'readiness' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
             }`}
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>4. Socratic Defense</span>
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>4. Target Readiness</span>
           </button>
         </div>
 
-        {/* Right: Timer & Raise Hand */}
-        <div className="flex items-center space-x-3">
-          <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-mono font-bold ${
-            secondsLeft < 300 
-              ? 'bg-rose-950/40 text-rose-400 border-rose-500/50 animate-pulse'
-              : 'bg-neutral-900 text-white border-white/10'
-          }`}>
-            <Clock className="w-3.5 h-3.5 text-rose-400" />
-            <span>{formatTimer(secondsLeft)}</span>
+        {/* Right: Timer & Raise Hand (Only in Rehearsal Screen) */}
+        {workspaceTab === 'rehearsal' && (
+          <div className="flex items-center space-x-3">
+            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-mono font-bold ${
+              secondsLeft < 300 
+                ? 'bg-rose-950/40 text-rose-400 border-rose-500/50 animate-pulse'
+                : 'bg-neutral-900 text-white border-white/10'
+            }`}>
+              <Clock className="w-3.5 h-3.5 text-rose-400" />
+              <span>{formatTimer(secondsLeft)}</span>
+            </div>
+
+            <button
+              onClick={() => setIsRaiseHandOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition shadow-sm"
+            >
+              <span>✋</span>
+              <span>Raise Hand</span>
+            </button>
           </div>
-
-          <button
-            onClick={() => setIsRaiseHandOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition shadow-sm"
-          >
-            <span>✋</span>
-            <span>Raise Hand</span>
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* ================= DYNAMIC QUESTION WORKSPACE ================= */}
-      <AnimatePresence mode="wait">
+      {/* Sub-Bar: 4 Round Stages for Rehearsal Screen */}
+      {workspaceTab === 'rehearsal' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-neutral-900/60 border border-white/5 text-xs font-mono">
+          <div className="flex items-center space-x-2">
+            <span className="text-neutral-400 text-[11px] font-bold uppercase tracking-wider">Screen Stage:</span>
+            <div className="flex items-center p-0.5 rounded-xl bg-black/60 border border-white/10">
+              <button
+                onClick={() => setQuestionMode('code')}
+                className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
+                  questionMode === 'code' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>Round 1: Code Sandbox</span>
+              </button>
+
+              <button
+                onClick={() => setQuestionMode('mobbin-ui')}
+                className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
+                  questionMode === 'mobbin-ui' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Layout className="w-3.5 h-3.5" />
+                <span>Round 2: Mobbin UI</span>
+              </button>
+
+              <button
+                onClick={() => setQuestionMode('mcq')}
+                className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
+                  questionMode === 'mcq' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Round 3: System MCQ</span>
+              </button>
+
+              <button
+                onClick={() => setQuestionMode('system-reasoning')}
+                className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg transition ${
+                  questionMode === 'system-reasoning' ? 'bg-white text-black font-bold shadow' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Round 4: Socratic Defense</span>
+              </button>
+            </div>
+          </div>
+
+          <span className="text-neutral-500 text-[11px]">
+            {questionMode === 'code' && 'Invariants & Automated Tests'}
+            {questionMode === 'mobbin-ui' && 'Component Trees & State Boundaries'}
+            {questionMode === 'mcq' && 'Architectural Tradeoff Decisions'}
+            {questionMode === 'system-reasoning' && 'Defense Against Concurrency & Split-Brain'}
+          </span>
+        </div>
+      )}
+
+      {/* ================= DYNAMIC QUESTION WORKSPACE (REHEARSAL MODE) ================= */}
+      {workspaceTab === 'rehearsal' && (
+        <>
+          <AnimatePresence mode="wait">
         
         {/* MODE 1: CODING SANDBOX */}
         {questionMode === 'code' && (
@@ -523,17 +613,82 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
                   </div>
                 </div>
 
-                {/* Editor Surface */}
-                <div className="relative min-h-[380px] p-4 bg-black">
-                  <TypingSparksOverlay textareaRef={editorRef} />
-                  <textarea
-                    ref={editorRef}
+                {/* Monaco Editor Surface */}
+                <div className="relative min-h-[380px] bg-black">
+                  <Editor
+                    height="380px"
+                    language={language === 'python' ? 'python' : 'javascript'}
+                    theme="vs-dark"
                     value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    className="w-full h-full min-h-[360px] bg-transparent text-neutral-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-rose-600/40 relative z-10"
-                    spellCheck={false}
+                    onChange={(val) => setCode(val || '')}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      tabSize: 2,
+                      wordWrap: 'on',
+                      padding: { top: 12, bottom: 12 },
+                      fontFamily: 'Fira Code, JetBrains Mono, Menlo, monospace',
+                      fontLigatures: true,
+                      suggestOnTriggerCharacters: true
+                    }}
                   />
                 </div>
+
+                {/* Inline Test Results & Stdout Terminal */}
+                {testRun.hasRun && testRun.outcome && (
+                  <div className="p-4 bg-neutral-950 border-t border-white/10 text-xs font-mono space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        {testRun.outcome.allPassed ? (
+                          <div className="flex items-center space-x-1.5 text-emerald-400 font-bold">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>All Invariants Verified & Conforming!</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-1.5 text-rose-400 font-bold">
+                            <AlertTriangle className="w-4 h-4" />
+                            <span>
+                              {testRun.outcome.tests.length > 0 
+                                ? `${testRun.outcome.tests.filter(t => t.passed).length}/${testRun.outcome.tests.length} Assertions Passed` 
+                                : 'Syntax / Execution Issue'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2 text-neutral-400 text-[11px]">
+                        <span>{testRun.outcome.executionTimeMs}ms execution</span>
+                        <button
+                          onClick={() => setIsPreviewModalOpen(true)}
+                          className="text-rose-400 hover:text-white underline transition"
+                        >
+                          Inspect Output →
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Backend Stdout logs */}
+                    {testRun.outcome.stdout && (
+                      <div className="p-3 rounded-xl bg-black border border-white/10 space-y-1">
+                        <div className="flex items-center space-x-1.5 text-neutral-400 text-[10px] uppercase font-bold tracking-wider">
+                          <Terminal className="w-3 h-3 text-rose-400" />
+                          <span>Console & Terminal (stdout):</span>
+                        </div>
+                        <pre className="font-mono text-xs text-neutral-200 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                          {testRun.outcome.stdout}
+                        </pre>
+                      </div>
+                    )}
+
+                    {testRun.outcome.error && (
+                      <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs">
+                        ⚠️ {testRun.outcome.error}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Editor Footer Action */}
                 <div className="px-5 py-3.5 bg-neutral-900/90 border-t border-white/10 flex items-center justify-between">
@@ -1015,6 +1170,101 @@ Evaluate on: 1. Invariant Preservation, 2. Concurrency/Idempotency, 3. Defensive
           </button>
         </div>
       </div>
+    </>
+  )}
+
+  {/* ================= COMPANY ROADMAP TAB ================= */}
+  {workspaceTab === 'roadmap' && (
+    <motion.div
+      key="roadmap-tab"
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+    >
+      <RoadmapView
+        profile={profile || {
+          targetCompany: track.company,
+          role: track.role,
+          seniority: 'Senior',
+          interviewDate: track.dateLabel,
+          daysRemaining: track.daysRemaining || 7,
+          focusAreas: track.focusTopics,
+          calendarConnected: false,
+          onboardingCompleted: true,
+          isGeneralPractice: false
+        }}
+        roadmap={roadmap.length > 0 ? roadmap : [
+          {
+            dayNumber: 1,
+            dateLabel: 'Day 1 — Company Invariants',
+            theme: `${track.company} Core Architecture & Monotonic Bounds`,
+            dsaProblemId: 'distributed-rate-limiter',
+            uiChallengeId: 'linear-command-palette',
+            dailyRitual: 'Morning 20m: Formulate Big-O time and space bounds out loud.',
+            isCompleted: true
+          },
+          {
+            dayNumber: 2,
+            dateLabel: 'Day 2 — State Boundaries',
+            theme: `${track.company} State Machine & Mutex Isolation`,
+            dsaProblemId: 'idempotent-transaction-ledger',
+            uiChallengeId: 'airbnb-filter-drawer',
+            dailyRitual: 'Map component boundaries on paper before writing code.',
+            isCompleted: false
+          },
+          {
+            dayNumber: 3,
+            dateLabel: 'Day 3 — Defensive Concurrency',
+            theme: `${track.company} Split-Brain & Monotonic Deque`,
+            dsaProblemId: 'lru-cache-eviction',
+            uiChallengeId: 'spotify-queue-drawer',
+            dailyRitual: 'Trace cache eviction priority in O(1) time.',
+            isCompleted: false
+          }
+        ]}
+        onToggleDay={onToggleDay || (() => {})}
+        onOpenSettings={onOpenSettings || (() => {})}
+        setActiveTab={() => {}}
+      />
+    </motion.div>
+  )}
+
+  {/* ================= AI MOCK COACH TAB ================= */}
+  {workspaceTab === 'coach' && (
+    <motion.div
+      key="coach-tab"
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+    >
+      <AiMockRoom
+        solvedCount={solvedCount}
+        completedFlowsCount={completedFlowsCount}
+      />
+    </motion.div>
+  )}
+
+  {/* ================= TARGET READINESS TAB ================= */}
+  {workspaceTab === 'readiness' && (
+    <motion.div
+      key="readiness-tab"
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+    >
+      <ProgressDashboard
+        solvedCount={solvedCount}
+        totalProblems={problems.length}
+        completedFlowsCount={completedFlowsCount}
+        totalFlows={UI_CHALLENGES.length}
+        streakDays={streakDays}
+        setActiveTab={() => {}}
+      />
+    </motion.div>
+  )}
 
       {/* ================= MODALS ================= */}
       <LiveUiPreviewModal

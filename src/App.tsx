@@ -10,8 +10,11 @@ import { ProgressDashboard } from './components/ProgressDashboard';
 import { RoadmapView } from './components/RoadmapView';
 import { OnboardingModal } from './components/OnboardingModal';
 import { FloatingAiPill } from './components/FloatingAiPill';
-import { InterviewCard, InterviewTrack } from './components/InterviewCard';
+import { InterviewCard, InterviewTrack, GoalSectionTab } from './components/InterviewCard';
 import { InterviewEnvironment } from './components/InterviewEnvironment';
+import { SettingsView } from './components/SettingsView';
+import { SponsorsView } from './components/SponsorsView';
+import { ShortcutsView } from './components/ShortcutsView';
 import { Building2, Sparkles, Code2 } from 'lucide-react';
 import { TabType, UserInterviewProfile, DayPlan, DsaProblem } from './types';
 import { DSA_PROBLEMS } from './data/dsaProblems';
@@ -130,6 +133,7 @@ export const App: React.FC = () => {
   const [profile, setProfile] = useState<UserInterviewProfile>(DEFAULT_VISITOR_PROFILE);
   const [goals, setGoals] = useState<InterviewTrack[]>(DEFAULT_GOALS);
   const [activeTrack, setActiveTrack] = useState<InterviewTrack | null>(null);
+  const [activeGoalTab, setActiveGoalTab] = useState<GoalSectionTab>('rehearsal');
   const [roadmap, setRoadmap] = useState<DayPlan[]>(DEFAULT_ROADMAP);
   const [customProblems, setCustomProblems] = useState<DsaProblem[]>([]);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
@@ -340,6 +344,14 @@ export const App: React.FC = () => {
                       track={activeTrack}
                       onExit={() => setActiveTrack(null)}
                       customProblems={customProblems}
+                      initialTab={activeGoalTab}
+                      profile={profile}
+                      roadmap={roadmap}
+                      onToggleDay={handleToggleDay}
+                      onOpenSettings={() => setIsOnboardingOpen(true)}
+                      solvedCount={solvedProblemIds.length}
+                      completedFlowsCount={completedFlowIds.length}
+                      streakDays={streakDays}
                     />
                   ) : (
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -391,7 +403,10 @@ export const App: React.FC = () => {
                             <InterviewCard 
                               key={track.id}
                               track={track}
-                              onEnter={(t) => setActiveTrack(t)}
+                              onEnter={(t, tab) => {
+                                setActiveTrack(t);
+                                setActiveGoalTab(tab || 'rehearsal');
+                              }}
                             />
                           ))}
 
@@ -433,6 +448,50 @@ export const App: React.FC = () => {
                       </div>
                     </div>
                   )}
+                </motion.div>
+              )}
+
+              {/* General App Pages: Sponsors, Settings, Shortcuts */}
+              {activeTab === 'sponsors' && (
+                <motion.div
+                  key="sponsors"
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                >
+                  <SponsorsView />
+                </motion.div>
+              )}
+
+              {activeTab === 'settings' && (
+                <motion.div
+                  key="settings"
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                >
+                  <SettingsView 
+                    user={user} 
+                    profile={profile}
+                    onClearData={() => {
+                      setGoals(DEFAULT_GOALS);
+                      setSolvedProblemIds([]);
+                    }}
+                  />
+                </motion.div>
+              )}
+
+              {activeTab === 'shortcuts' && (
+                <motion.div
+                  key="shortcuts"
+                  initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                >
+                  <ShortcutsView />
                 </motion.div>
               )}
 

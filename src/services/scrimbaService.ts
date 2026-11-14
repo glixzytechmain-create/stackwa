@@ -132,13 +132,9 @@ export async function createScrimbaExplainer(params: CreateExplainerParams & { p
       };
     }
   } catch (err: any) {
-    // Graceful fallback for browser CORS: Scrimba REST endpoints require server-side execution.
-    // Provide verified official Scrimba explainer ID for instant playback.
-    const fallbackId = (params.problemId && VERIFIED_SCRIMBA_EXPLAINERS[params.problemId]) || 'cWvQ9tL';
     return {
-      success: true,
-      explainerId: fallbackId,
-      embedUrl: `https://scrimba.com/explain/${fallbackId}`
+      success: false,
+      error: "Scrimba REST endpoint requires a server proxy for browser requests due to CORS preflight. Use the interactive Visual Stepper or launch directly on Scrimba."
     };
   }
 }

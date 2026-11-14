@@ -6,11 +6,13 @@ import {
   ArrowRight, 
   RotateCw, 
   Code2, 
-  Layers, 
-  ShieldCheck,
-  Zap
+  Zap,
+  Bot,
+  BarChart3
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+export type GoalSectionTab = 'rehearsal' | 'roadmap' | 'coach' | 'readiness';
 
 export interface InterviewTrack {
   id: string;
@@ -29,7 +31,7 @@ export interface InterviewTrack {
 
 interface InterviewCardProps {
   track: InterviewTrack;
-  onEnter: (track: InterviewTrack) => void;
+  onEnter: (track: InterviewTrack, initialTab?: GoalSectionTab) => void;
 }
 
 export const InterviewCard: React.FC<InterviewCardProps> = ({ track, onEnter }) => {
@@ -89,26 +91,65 @@ export const InterviewCard: React.FC<InterviewCardProps> = ({ track, onEnter }) 
                 </span>
               ))}
             </div>
+
+            {/* Dedicated Company Card Quick Nav: Roadmap, Coach, Readiness */}
+            <div className="pt-2 flex items-center space-x-1.5">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnter(track, 'roadmap');
+                }}
+                className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-white/10 hover:border-white/20 text-[10px] text-neutral-300 font-mono transition"
+                title={`Open ${track.company} Syllabus Roadmap`}
+              >
+                <Calendar className="w-3 h-3 text-rose-400" />
+                <span>Roadmap</span>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnter(track, 'coach');
+                }}
+                className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-white/10 hover:border-white/20 text-[10px] text-neutral-300 font-mono transition"
+                title={`Open ${track.company} Voice AI Coach`}
+              >
+                <Bot className="w-3 h-3 text-sky-400" />
+                <span>AI Coach</span>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnter(track, 'readiness');
+                }}
+                className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-white/10 hover:border-white/20 text-[10px] text-neutral-300 font-mono transition"
+                title={`Open ${track.company} Readiness Radar`}
+              >
+                <BarChart3 className="w-3 h-3 text-emerald-400" />
+                <span>Readiness</span>
+              </button>
+            </div>
           </div>
 
           {/* Bottom Actions */}
-          <div className="pt-4 border-t border-white/5 flex items-center justify-between">
+          <div className="pt-3 border-t border-white/5 flex items-center justify-between">
             <button
               onClick={() => setIsFlipped(true)}
               className="flex items-center space-x-1.5 text-xs text-neutral-400 hover:text-white transition font-mono"
             >
               <RotateCw className="w-3.5 h-3.5 text-rose-400" />
-              <span>Flip for Rounds</span>
+              <span>Flip Details</span>
             </button>
 
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              onClick={() => onEnter(track)}
+              onClick={() => onEnter(track, 'rehearsal')}
               className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition"
             >
-              <span>Let's Go</span>
+              <span>Enter Screen</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </motion.button>
           </div>
@@ -127,49 +168,80 @@ export const InterviewCard: React.FC<InterviewCardProps> = ({ track, onEnter }) 
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div>
                 <span className="text-[10px] font-mono text-rose-400 uppercase font-bold tracking-wider">Curriculum Syllabus</span>
-                <h4 className="font-bold text-sm text-white">{track.company} Interview Track</h4>
+                <h4 className="font-bold text-sm text-white">{track.company} Workspace</h4>
               </div>
               <span className="text-xs font-mono font-bold text-emerald-400">
-                {track.completedRounds} / {track.roundsCount} Rounds
+                {track.completedRounds} / {track.roundsCount} Rounds Done
               </span>
             </div>
 
-            {/* Rounds List */}
-            <div className="space-y-2.5 pt-3 text-xs">
-              <div className="flex items-center space-x-2 text-neutral-300">
-                <Code2 className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
-                <span><strong>Round 1:</strong> Core Algorithmic Invariants (Code Sandbox)</span>
+            {/* Rounds & Features List */}
+            <div className="space-y-2 pt-2.5 text-xs">
+              <div 
+                onClick={() => onEnter(track, 'rehearsal')}
+                className="flex items-center justify-between p-2 rounded-xl bg-black/40 hover:bg-black/80 border border-white/5 cursor-pointer text-neutral-200 hover:text-white transition"
+              >
+                <div className="flex items-center space-x-2">
+                  <Code2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span><strong>Round 1:</strong> 4-Stage Live Screen Rehearsal</span>
+                </div>
+                <ArrowRight className="w-3 h-3 text-neutral-500" />
               </div>
-              <div className="flex items-center space-x-2 text-neutral-300">
-                <Layers className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                <span><strong>Round 2:</strong> Architecture & State Boundary MCQs</span>
+
+              <div 
+                onClick={() => onEnter(track, 'roadmap')}
+                className="flex items-center justify-between p-2 rounded-xl bg-black/40 hover:bg-black/80 border border-white/5 cursor-pointer text-neutral-200 hover:text-white transition"
+              >
+                <div className="flex items-center space-x-2">
+                  <Calendar className="w-3.5 h-3.5 text-rose-400" />
+                  <span><strong>Plan:</strong> Day-by-Day Company Syllabus</span>
+                </div>
+                <ArrowRight className="w-3 h-3 text-neutral-500" />
               </div>
-              <div className="flex items-center space-x-2 text-neutral-300">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                <span><strong>Round 3:</strong> Defensive Edge-Case & Concurrency Defense</span>
+
+              <div 
+                onClick={() => onEnter(track, 'coach')}
+                className="flex items-center justify-between p-2 rounded-xl bg-black/40 hover:bg-black/80 border border-white/5 cursor-pointer text-neutral-200 hover:text-white transition"
+              >
+                <div className="flex items-center space-x-2">
+                  <Bot className="w-3.5 h-3.5 text-sky-400" />
+                  <span><strong>AI Lead:</strong> Voice Mock Interviewer</span>
+                </div>
+                <ArrowRight className="w-3 h-3 text-neutral-500" />
+              </div>
+
+              <div 
+                onClick={() => onEnter(track, 'readiness')}
+                className="flex items-center justify-between p-2 rounded-xl bg-black/40 hover:bg-black/80 border border-white/5 cursor-pointer text-neutral-200 hover:text-white transition"
+              >
+                <div className="flex items-center space-x-2">
+                  <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span><strong>Target:</strong> Readiness Radar & Scorecard</span>
+                </div>
+                <ArrowRight className="w-3 h-3 text-neutral-500" />
               </div>
             </div>
           </div>
 
           {/* Bottom Actions */}
-          <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+          <div className="pt-3 border-t border-white/10 flex items-center justify-between">
             <button
               onClick={() => setIsFlipped(false)}
               className="flex items-center space-x-1.5 text-xs text-neutral-400 hover:text-white transition font-mono"
             >
               <RotateCw className="w-3.5 h-3.5" />
-              <span>Back to Overview</span>
+              <span>Back</span>
             </button>
 
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              onClick={() => onEnter(track)}
+              onClick={() => onEnter(track, 'rehearsal')}
               className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition"
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>Enter Session Now</span>
+              <span>Launch Screen Now</span>
             </motion.button>
           </div>
         </div>

@@ -32,8 +32,15 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
   onReRun,
   title
 }) => {
-  const [activeTab, setActiveTab] = useState<'ui-sandbox' | 'console-diff'>('ui-sandbox');
+  const isUiCode = /document\.|innerHTML|createElement|<div>|<button>|className|style|render|return\s*\(|<[A-Z]/i.test(code);
+  const [activeTab, setActiveTab] = useState<'ui-sandbox' | 'console-diff'>(isUiCode ? 'ui-sandbox' : 'console-diff');
   const [srcDoc, setSrcDoc] = useState<string>('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(isUiCode ? 'ui-sandbox' : 'console-diff');
+    }
+  }, [isOpen, isUiCode]);
 
   useEffect(() => {
     if (!isOpen) return;

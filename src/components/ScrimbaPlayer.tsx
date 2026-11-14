@@ -18,12 +18,12 @@ interface ScrimbaPlayerProps {
 }
 
 export const ScrimbaPlayer: React.FC<ScrimbaPlayerProps> = ({ problem, userCode }) => {
-  const [explainerId, setExplainerId] = useState<string | null>(problem.scrimbaEmbedId || null);
+  const [explainerId, setExplainerId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [teacher, setTeacher] = useState<'standard' | 'eli5' | 'professor' | 'tldr' | 'lol'>('standard');
   const [mode, setMode] = useState<'landscape' | 'portrait'>('landscape');
-  const [activeTab, setActiveTab] = useState<'official-iframe' | 'interactive-stepper'>(explainerId ? 'official-iframe' : 'interactive-stepper');
+  const [activeTab, setActiveTab] = useState<'official-iframe' | 'interactive-stepper'>('interactive-stepper');
 
   // Interactive visualizer local frame state
   const [stepIndex, setStepIndex] = useState(0);

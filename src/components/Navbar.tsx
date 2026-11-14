@@ -1,15 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Code2, 
-  Bot, 
-  BarChart3, 
   Flame, 
   LogOut, 
-  Calendar,
   Home,
   ChevronDown,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Sliders,
+  Keyboard
 } from 'lucide-react';
 import { TabType, UserInterviewProfile } from '../types';
 import { loginWithGoogle, logoutUser } from '../firebase';
@@ -78,12 +77,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Clean Navigation Tabs (System Design standalone tab purged) */}
+          {/* General App Pages in Global Header */}
           <nav className="hidden md:flex items-center space-x-1 bg-neutral-900/80 p-1.5 rounded-2xl border border-white/5">
             <button
               onClick={() => setActiveTab('dsa')}
               className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === 'dsa'
+                activeTab === 'dsa' || activeTab === 'vaults'
                   ? 'bg-white text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
@@ -93,39 +92,39 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveTab('roadmap')}
+              onClick={() => setActiveTab('sponsors')}
               className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === 'roadmap'
+                activeTab === 'sponsors'
                   ? 'bg-white text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Roadmap</span>
+              <Sparkles className="w-3.5 h-3.5 text-rose-500" />
+              <span>Sponsors & Tools</span>
             </button>
 
             <button
-              onClick={() => setActiveTab('mock-interview')}
+              onClick={() => setActiveTab('settings')}
               className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === 'mock-interview'
+                activeTab === 'settings'
                   ? 'bg-white text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Bot className="w-3.5 h-3.5" />
-              <span>AI Coach</span>
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Settings</span>
             </button>
 
             <button
-              onClick={() => setActiveTab('dashboard')}
+              onClick={() => setActiveTab('shortcuts')}
               className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === 'dashboard'
+                activeTab === 'shortcuts'
                   ? 'bg-white text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Readiness</span>
+              <Keyboard className="w-3.5 h-3.5" />
+              <span>Shortcuts</span>
             </button>
           </nav>
 
