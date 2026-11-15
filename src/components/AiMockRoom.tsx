@@ -126,7 +126,7 @@ What problem or UI pattern are you currently working through? Or would you like 
                 <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
                   <span>Interview Cake Pedagogy & Mobbin Architecture</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                    Gemini 3.8 Flash & Anakin.ai
+                    Stackwa Socratic Engine
                   </span>
                 </p>
               </div>

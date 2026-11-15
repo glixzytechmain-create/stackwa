@@ -59,8 +59,7 @@ export async function loginWithGoogle(): Promise<User | null> {
     return result.user;
   } catch (error) {
     console.error("Google sign-in error:", error);
-    // If popup blocked or cancelled, fallback to guest signin
-    return loginAsGuest();
+    return null;
   }
 }
 

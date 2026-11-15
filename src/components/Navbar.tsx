@@ -21,6 +21,7 @@ interface NavbarProps {
   profile: UserInterviewProfile | null;
   onOpenOnboarding: () => void;
   onNavigateHome: () => void;
+  onSignOut?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -30,7 +31,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   streakDays: _streakDays,
   profile,
   onOpenOnboarding,
-  onNavigateHome
+  onNavigateHome,
+  onSignOut
 }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -63,9 +65,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 alt="Stackwa" 
                 className="h-8 w-auto object-contain group-hover:opacity-90 transition" 
               />
-              <span className="hidden sm:inline-block text-[10px] text-neutral-400 font-mono tracking-widest uppercase border border-white/10 px-1.5 py-0.5 rounded-md bg-white/5">
-                OS
-              </span>
             </div>
 
             <button
@@ -92,15 +91,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveTab('sponsors')}
+              onClick={() => setActiveTab('cheatsheet')}
               className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-                activeTab === 'sponsors'
+                activeTab === 'cheatsheet' || activeTab === 'sponsors'
                   ? 'bg-white text-black shadow-md'
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-rose-500" />
-              <span>Sponsors & Tools</span>
+              <span>Cheatsheet & Invariants</span>
             </button>
 
             <button
@@ -224,9 +223,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                       {/* Sign Out */}
                       <div className="mt-2 pt-2 border-t border-white/5">
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             setIsProfileMenuOpen(false);
-                            logoutUser();
+                            if (onSignOut) {
+                              onSignOut();
+                            } else {
+                              await logoutUser();
+                            }
                           }}
                           className="w-full flex items-center space-x-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
                         >
@@ -239,7 +242,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               ) : (
                 <button
-                  onClick={() => loginWithGoogle()}
+                  onClick={async () => {
+                    const logged = await loginWithGoogle();
+                    if (logged && !logged.isAnonymous) {
+                      onOpenOnboarding();
+                    }
+                  }}
                   className="px-3.5 py-1.5 text-xs font-semibold text-white bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl shadow-sm transition flex items-center space-x-2"
                 >
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">

@@ -18,7 +18,7 @@ export const ShortcutsView: React.FC = () => {
       windowsKeys: ['Ctrl', 'K'],
       action: 'Open Socratic AI Command Bar',
       category: 'Global',
-      description: 'Triggers the floating Gemini 3.8 Flash pill to ask clarifying questions or get hint evaluations.'
+      description: 'Triggers the floating Socratic AI Lead pill to ask clarifying questions or get hint evaluations.'
     },
     {
       keys: ['⌘', 'H'],

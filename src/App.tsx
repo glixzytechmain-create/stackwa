@@ -13,7 +13,7 @@ import { FloatingAiPill } from './components/FloatingAiPill';
 import { InterviewCard, InterviewTrack, GoalSectionTab } from './components/InterviewCard';
 import { InterviewEnvironment } from './components/InterviewEnvironment';
 import { SettingsView } from './components/SettingsView';
-import { SponsorsView } from './components/SponsorsView';
+import { CheatsheetView } from './components/CheatsheetView';
 import { ShortcutsView } from './components/ShortcutsView';
 import { Building2, Sparkles, Code2 } from 'lucide-react';
 import { TabType, UserInterviewProfile, DayPlan, DsaProblem, TestSessionRecord, SavedVisualExplanation } from './types';
@@ -24,7 +24,8 @@ import {
   subscribeToAuth, 
   loadUserProgress, 
   saveUserProgress,
-  loginWithGoogle
+  loginWithGoogle,
+  logoutUser
 } from './firebase';
 import { type User } from 'firebase/auth';
 
@@ -282,7 +283,17 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = subscribeToAuth((currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
+      if (currentUser && !currentUser.isAnonymous) {
+        // Authenticated user: if on landing, transition straight into Studio and open onboarding greeting
+        setCurrentView((prev) => {
+          if (prev === 'landing') {
+            localStorage.setItem('stackwa_current_view', 'studio');
+            setIsOnboardingOpen(true);
+            return 'studio';
+          }
+          return prev;
+        });
+
         loadUserProgress(currentUser.uid).then((progress) => {
           if (progress) {
             if (progress.solvedProblems) setSolvedProblemIds(progress.solvedProblems);
@@ -316,6 +327,12 @@ export const App: React.FC = () => {
             }
           }
         });
+      } else if (!currentUser) {
+        // User logged out: completely reset view state to Landing Page and clear active track
+        setCurrentView('landing');
+        setActiveTrack(null);
+        localStorage.setItem('stackwa_current_view', 'landing');
+        window.location.hash = '#home';
       }
     });
 
@@ -505,6 +522,21 @@ export const App: React.FC = () => {
     setCurrentView('landing');
     try {
       localStorage.setItem('stackwa_current_view', 'landing');
+      window.location.hash = '#home';
+      window.history.replaceState(null, '', '#home');
+    } catch {}
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await logoutUser();
+    } catch {}
+    setUser(null);
+    setActiveTrack(null);
+    setCurrentView('landing');
+    localStorage.setItem('stackwa_current_view', 'landing');
+    try {
+      window.location.hash = '#home';
       window.history.replaceState(null, '', '#home');
     } catch {}
   };
@@ -531,7 +563,14 @@ export const App: React.FC = () => {
           >
             <LandingPage
               onLaunchApp={handleLaunchStudio}
-              onSignInWithGoogle={() => loginWithGoogle()}
+              onSignInWithGoogle={async () => {
+                const loggedUser = await loginWithGoogle();
+                if (loggedUser && !loggedUser.isAnonymous) {
+                  setCurrentView('studio');
+                  localStorage.setItem('stackwa_current_view', 'studio');
+                  setIsOnboardingOpen(true);
+                }
+              }}
               user={user}
             />
           </motion.div>
@@ -554,6 +593,7 @@ export const App: React.FC = () => {
             profile={profile}
             onOpenOnboarding={() => setIsOnboardingOpen(true)}
             onNavigateHome={handleNavigateHome}
+            onSignOut={handleSignOut}
           />
 
           {/* Main Content Area */}
@@ -681,16 +721,16 @@ export const App: React.FC = () => {
                 </motion.div>
               )}
 
-              {/* General App Pages: Sponsors, Settings, Shortcuts */}
-              {activeTab === 'sponsors' && (
+              {/* General App Pages: Cheatsheet & Invariants, Settings, Shortcuts */}
+              {(activeTab === 'cheatsheet' || activeTab === 'sponsors') && (
                 <motion.div
-                  key="sponsors"
+                  key="cheatsheet"
                   initial={{ opacity: 0, y: 15, filter: 'blur(8px)' }}
                   animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
                   transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
-                  <SponsorsView />
+                  <CheatsheetView />
                 </motion.div>
               )}
 

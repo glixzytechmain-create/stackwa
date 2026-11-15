@@ -1605,30 +1605,30 @@ export async function generateComprehensiveReadinessReport(
     const totalTests = codeSubmissions.reduce((acc, c) => acc + (c.totalTests || 1), 0);
     algoScore = Math.min(100, Math.max(0, Math.round((totalPassed / totalTests) * 100)));
   } else if ((profile?.testHistory?.length || 0) > 0) {
-    const avgR1 = profile!.testHistory!.reduce((acc, r) => acc + (r.round1Score || 70), 0) / profile!.testHistory!.length;
+    const avgR1 = profile!.testHistory!.reduce((acc, r) => acc + (r.round1Score ?? 0), 0) / profile!.testHistory!.length;
     algoScore = Math.round(avgR1);
   } else {
-    algoScore = 65; // baseline calibration
+    algoScore = 0; // Strictly 0 if unattempted
   }
 
   let archScore = 0;
   if (mcqSubmissions.length > 0) {
     archScore = Math.round(mcqSubmissions.reduce((acc, m) => acc + m.score, 0) / mcqSubmissions.length);
   } else if ((profile?.testHistory?.length || 0) > 0) {
-    const avgR2 = profile!.testHistory!.reduce((acc, r) => acc + (r.round2Score || 75), 0) / profile!.testHistory!.length;
+    const avgR2 = profile!.testHistory!.reduce((acc, r) => acc + (r.round2Score ?? 0), 0) / profile!.testHistory!.length;
     archScore = Math.round(avgR2);
   } else {
-    archScore = 70;
+    archScore = 0; // Strictly 0 if unattempted
   }
 
   let verbalScore = 0;
   if (debateSubmissions.length > 0) {
     verbalScore = Math.round(debateSubmissions.reduce((acc, d) => acc + d.score, 0) / debateSubmissions.length);
   } else if ((profile?.testHistory?.length || 0) > 0) {
-    const avgR3 = profile!.testHistory!.reduce((acc, r) => acc + (r.round3Score || 80), 0) / profile!.testHistory!.length;
+    const avgR3 = profile!.testHistory!.reduce((acc, r) => acc + (r.round3Score ?? 0), 0) / profile!.testHistory!.length;
     verbalScore = Math.round(avgR3);
   } else {
-    verbalScore = 75;
+    verbalScore = 0; // Strictly 0 if unattempted
   }
 
   const uiSubmissions = codeSubmissions.filter(c => c.isUiChallenge || (c.similarityScore !== undefined && c.similarityScore > 0));
@@ -1636,7 +1636,7 @@ export async function generateComprehensiveReadinessReport(
   if (uiSubmissions.length > 0) {
     uiScore = Math.round(uiSubmissions.reduce((acc, u) => acc + (u.similarityScore || (u.allPassed ? 90 : 50)), 0) / uiSubmissions.length);
   } else {
-    uiScore = algoScore > 75 ? Math.round(algoScore * 0.95) : 70;
+    uiScore = algoScore > 0 ? Math.round(algoScore * 0.95) : 0;
   }
 
   // Weighted overall composite
@@ -1669,9 +1669,10 @@ CANDIDATE TELEMETRY:
 
 INSTRUCTIONS:
 1. Write a 2-3 sentence executive summary of candidate readiness for ${targetCompany}.
-2. List 3 specific, grounded technical strengths referencing algorithms, code structure, or architectural choices.
-3. List 2-3 critical vulnerabilities / blind spots that could cause a downlevel or rejection at ${targetCompany}.
-4. Provide a 3-step prioritized pre-interview action plan.
+2. CRITICAL SCORING RULE: If any pillar score is 0%, this indicates the candidate has NOT attempted that section yet. You MUST explicitly call out unattempted rounds with 0% and "Unattempted", and do NOT fabricate false achievements for them.
+3. List 2-3 specific, grounded technical strengths (if unattempted, note readiness to start calibration).
+4. List 2-3 critical vulnerabilities / blind spots (if rounds are unattempted, list them as priority gaps).
+5. Provide a 3-step prioritized pre-interview action plan to complete missing rounds and strengthen invariants.
 
 Return ONLY valid JSON matching this schema:
 {
@@ -1702,27 +1703,40 @@ Return ONLY valid JSON matching this schema:
         return {
           overallScore,
           hiringVerdict: verdict,
-          executiveSummary: parsed.executiveSummary || `Candidate exhibits solid engineering fundamentals for ${targetCompany} with an overall readiness of ${overallScore}%.`,
+          executiveSummary: parsed.executiveSummary || (overallScore === 0 
+            ? `Candidate has not yet submitted any interview attempts for ${targetCompany} (${role}). Overall readiness is 0% (Needs Calibration).` 
+            : `Candidate exhibits solid engineering fundamentals for ${targetCompany} with an overall readiness of ${overallScore}%.`),
           pillarBreakdown: {
             algorithmic: algoScore,
             architecture: archScore,
             verbalDefense: verbalScore,
             uiFidelity: uiScore
           },
-          keyStrengths: parsed.keyStrengths || [
+          keyStrengths: parsed.keyStrengths || (overallScore === 0 ? [
+            `Target track calibrated for ${targetCompany} (${role})`,
+            `Test runner environment primed for strict zero-mock validation`,
+            `Ready to record baseline telemetry across coding, architecture, and debate`
+          ] : [
             `Demonstrated clean algorithmic logic on core ${role} invariant tests`,
             `Solid test-case execution adherence with minimal runtime overhead`,
             `Effective verbal defense during Socratic pushback`
-          ],
-          criticalVulnerabilities: parsed.criticalVulnerabilities || [
+          ]),
+          criticalVulnerabilities: parsed.criticalVulnerabilities || (overallScore === 0 ? [
+            `Round 1 (Code), Round 2 (MCQ), and Round 3 (Debate) are currently unattempted (0%)`,
+            `No verified telemetry exists to assess edge-case or Big-O discipline`
+          ] : [
             `Boundary interval conditions require stricter defensive assertions`,
             `Need deeper elaboration on distributed failure modes under peak traffic`
-          ],
-          recommendedActionPlan: parsed.recommendedActionPlan || [
+          ]),
+          recommendedActionPlan: parsed.recommendedActionPlan || (overallScore === 0 ? [
+            `Attempt Round 1 (Hands-On Code Sandbox) to establish algorithmic baseline`,
+            `Complete Round 2 (Architecture & Invariants MCQ)`,
+            `Engage in Round 3 (Live Architecture Socratic Debate)`
+          ] : [
             `Rehearse 2 high-concurrency sliding window and mutex invariants`,
             `Review ${targetCompany}-specific architectural trade-offs`,
-            `Conduct one timed 45m end-to-end rehearsal before the live screen`
-          ],
+            `Conduct one full-screen rehearsal simulation before the live screen`
+          ]),
           analyzedAt: new Date().toISOString()
         };
       }
@@ -1735,26 +1749,39 @@ Return ONLY valid JSON matching this schema:
   return {
     overallScore,
     hiringVerdict: verdict,
-    executiveSummary: `Candidate demonstrates verified algorithmic competence for ${targetCompany} (${role}) with a ${overallScore}% composite readiness score based on ${codeSubmissions.length} code submissions.`,
+    executiveSummary: overallScore === 0
+      ? `Candidate has not yet submitted any challenge attempts for ${targetCompany} (${role}). Current readiness score is 0% (Needs Calibration).`
+      : `Candidate demonstrates verified algorithmic competence for ${targetCompany} (${role}) with a ${overallScore}% composite readiness score based on telemetry.`,
     pillarBreakdown: {
       algorithmic: algoScore,
       architecture: archScore,
       verbalDefense: verbalScore,
       uiFidelity: uiScore
     },
-    keyStrengths: [
+    keyStrengths: overallScore === 0 ? [
+      `Target track successfully calibrated for ${targetCompany} (${role})`,
+      `In-browser execution sandbox initialized for zero-mock test assertions`,
+      `Ready to establish baseline across Code, Architecture, and Socratic Defense`
+    ] : [
       `Passed test assertions on submitted ${role} challenges with strong Big-O discipline`,
       `Demonstrated consistent handling of standard inputs and execution timing`,
       `Solid grasp of core architectural patterns verified in diagnostic telemetry`
     ],
-    criticalVulnerabilities: [
+    criticalVulnerabilities: overallScore === 0 ? [
+      `Round 1, Round 2, and Round 3 are unattempted (0% completion)`,
+      `No automated test or verbal telemetry recorded yet`
+    ] : [
       `Extreme edge cases and empty/null boundary checks need proactive verification`,
       `Articulate concurrency bounds and cache eviction trade-offs more explicitly`
     ],
-    recommendedActionPlan: [
+    recommendedActionPlan: overallScore === 0 ? [
+      `Launch Round 1 and run code test assertions to generate your first algorithmic baseline`,
+      `Attempt the architectural MCQ assessment in Round 2`,
+      `Complete a live Socratic debate defense in Round 3`
+    ] : [
       `Review edge cases where intervals touch exact boundary thresholds`,
       `Rehearse state machine lifecycle invariants in UI components`,
-      `Run one final full-screen rehearsal simulation`
+      `Run one full-screen rehearsal simulation`
     ],
     analyzedAt: new Date().toISOString()
   };

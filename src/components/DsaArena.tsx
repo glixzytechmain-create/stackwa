@@ -287,7 +287,7 @@ export const DsaArena: React.FC<DsaArenaProps> = ({
             onClick={handleGenerateAiProblem}
             disabled={isGeneratingAiProblem}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-300 hover:text-white bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 transition shadow-sm disabled:opacity-50"
-            title="Use Gemini to generate a tailored scenario challenge for this company"
+            title="Use Stackwa AI Lead to generate a tailored scenario challenge for this company"
           >
             <Sparkles className={`w-3.5 h-3.5 text-rose-400 ${isGeneratingAiProblem ? 'animate-spin' : ''}`} />
             <span>{isGeneratingAiProblem ? 'Generating...' : '⚡ AI Scenario Question'}</span>

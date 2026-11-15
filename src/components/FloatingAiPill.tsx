@@ -265,7 +265,7 @@ ${scorecard.improvements.map(i => `• ${i}`).join('\n')}
                         {profile?.targetCompany || 'Linear'} Interview Prep
                       </span>
                     </h3>
-                    <p className="text-[11px] text-neutral-400">Powered by Gemini 3.8 Flash & Anakin.ai</p>
+                    <p className="text-[11px] text-neutral-400">Powered by Stackwa Socratic AI Lead</p>
                   </div>
                 </div>
 

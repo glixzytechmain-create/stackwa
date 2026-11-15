@@ -559,9 +559,18 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     setIsSubmitting(true);
     const totalQ = Math.max(1, batchQuestions.length);
     const solvedQ = solvedQuestionIds.size;
-    const r1Score = Math.round((solvedQ / totalQ) * 100);
-    const r2Score = answeredMcqCount > 0 ? Math.round((correctMcqCount / answeredMcqCount) * 100) : round2Score;
-    const r3Score = round3Score ?? 85;
+    // Round 1: Code & UI Sandbox. If no questions were solved, strictly 0%
+    const r1Score = solvedQ > 0 ? Math.round((solvedQ / totalQ) * 100) : 0;
+    
+    // Round 2: Architecture & Invariants MCQ. If unattempted, strictly 0%
+    const r2Score = answeredMcqCount > 0 
+      ? Math.round((correctMcqCount / Math.max(answeredMcqCount, mcqList.length || 1)) * 100) 
+      : 0;
+
+    // Round 3: Live Socratic Debate & Architecture Defense. If unattempted, strictly 0%
+    const r3Score = round3Score !== null ? round3Score : 0;
+
+    // Strict weighted composite score based ONLY on real attempted performance
     const compositeScore = Math.round(0.40 * r1Score + 0.30 * r2Score + 0.30 * r3Score);
     const timeSpent = Math.max(1, totalSeconds - secondsLeft);
 
@@ -613,7 +622,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   const [mcqSubmitted, setMcqSubmitted] = useState(false);
   const [mcqDifficulty, setMcqDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [isLoadingMcqs, setIsLoadingMcqs] = useState(false);
-  const [round2Score, setRound2Score] = useState<number>(100);
+  const [_round2Score, setRound2Score] = useState<number>(0);
   const [correctMcqCount, setCorrectMcqCount] = useState<number>(0);
   const [answeredMcqCount, setAnsweredMcqCount] = useState<number>(0);
 
@@ -706,12 +715,6 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     const interval = setInterval(() => setSecondsLeft(prev => prev - 1), 1000);
     return () => clearInterval(interval);
   }, [isTimerRunning, secondsLeft]);
-
-  const formatTimer = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
 
   // Run Code with strict assertion execution
   const handleRunCode = async () => {
@@ -978,16 +981,12 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
           </button>
         </div>
 
-        {/* Right: Timer & Raise Hand (Only in Rehearsal Screen) */}
+        {/* Right: Live Session & Raise Hand (Only in Rehearsal Screen) */}
         {workspaceTab === 'rehearsal' && (
           <div className="flex items-center space-x-3">
-            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border text-xs font-mono font-bold ${
-              secondsLeft < 300 
-                ? 'bg-rose-950/40 text-rose-400 border-rose-500/50 animate-pulse'
-                : 'bg-neutral-900 text-white border-white/10'
-            }`}>
-              <Clock className="w-3.5 h-3.5 text-rose-400" />
-              <span>{formatTimer(secondsLeft)}</span>
+            <div className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-neutral-900 border border-white/10 text-xs font-mono">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-neutral-300 font-semibold">Live Screen Session</span>
             </div>
 
             <button
@@ -1109,7 +1108,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
                       <div className="flex items-center space-x-3 text-xs font-mono text-neutral-400 bg-black/40 px-4 py-2.5 rounded-2xl border border-white/5">
                         <div className="flex items-center space-x-2">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          <span>Gemini 3.8 Flash Calibrated</span>
+                          <span>Socratic AI Engine Calibrated</span>
                         </div>
                       </div>
                     </div>
@@ -1538,7 +1537,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
                             <div className="h-64 flex flex-col items-center justify-center space-y-3 bg-neutral-950/60 rounded-xl">
                               <div className="w-8 h-8 rounded-full border-2 border-rose-500 border-t-transparent animate-spin" />
                               <p className="text-xs font-mono text-neutral-400">
-                                Gemini 3.8 Flash is crafting an interactive motion diagram...
+                                Stackwa AI Lead is crafting an interactive motion diagram...
                               </p>
                             </div>
                           ) : generativeHtml ? (
@@ -1910,7 +1909,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
             {isLoadingMcqs ? (
               <div className="py-16 flex flex-col items-center justify-center space-y-3 font-mono text-xs text-neutral-400">
                 <div className="w-8 h-8 rounded-full border-2 border-rose-500 border-t-transparent animate-spin" />
-                <span>Gemini 3.8 Flash is calibrating {mcqDifficulty} questions for your {profile?.seniority || 'Mid-Level'} track...</span>
+                <span>Stackwa Socratic Engine is calibrating {mcqDifficulty} questions for your {profile?.seniority || 'Mid-Level'} track...</span>
               </div>
             ) : currentMcq ? (
               <>
@@ -2301,14 +2300,23 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
                 <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
                   <div className="text-[9px] text-neutral-400 uppercase tracking-wider">R1: Code & UI</div>
                   <div className="text-lg font-black text-rose-400 mt-1">{submittedRecord.round1Score ?? 0}%</div>
+                  {(submittedRecord.round1Score ?? 0) === 0 && (
+                    <div className="text-[8px] text-neutral-500 uppercase tracking-wider mt-0.5">Unattempted</div>
+                  )}
                 </div>
                 <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
                   <div className="text-[9px] text-neutral-400 uppercase tracking-wider">R2: MCQ</div>
                   <div className="text-lg font-black text-blue-400 mt-1">{submittedRecord.round2Score ?? 0}%</div>
+                  {(submittedRecord.round2Score ?? 0) === 0 && (
+                    <div className="text-[8px] text-neutral-500 uppercase tracking-wider mt-0.5">Unattempted</div>
+                  )}
                 </div>
                 <div className="p-3 rounded-xl bg-neutral-900/80 border border-white/5">
                   <div className="text-[9px] text-neutral-400 uppercase tracking-wider">R3: Debate</div>
                   <div className="text-lg font-black text-purple-400 mt-1">{submittedRecord.round3Score ?? 0}%</div>
+                  {(submittedRecord.round3Score ?? 0) === 0 && (
+                    <div className="text-[8px] text-neutral-500 uppercase tracking-wider mt-0.5">Unattempted</div>
+                  )}
                 </div>
               </div>
 

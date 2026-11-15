@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  Key, 
   Sliders, 
   Volume2, 
   VolumeX, 
@@ -10,7 +9,9 @@ import {
   CheckCircle2, 
   Save, 
   ShieldCheck, 
-  Info
+  Info,
+  Code2,
+  Mic
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { UserInterviewProfile } from '../types';
@@ -28,34 +29,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   profile,
   onClearData
 }) => {
-  // Integrations state
-  const [scrimbaKey, setScrimbaKey] = useState(
-    localStorage.getItem('stackwa_scrimba_key') || 'scr_live_n7u06s8pb252l7dfutvs4brh'
-  );
-  const [anakinAppId, setAnakinAppId] = useState(
-    localStorage.getItem('stackwa_anakin_app_id') || ''
-  );
-  const [anakinApiKey, setAnakinApiKey] = useState(
-    localStorage.getItem('stackwa_anakin_api_key') || ''
-  );
+  // Audio & Socratic Voice Preferences
   const [soundEnabled, setSoundEnabled] = useState(
     localStorage.getItem('stackwa_sound_enabled') !== 'false'
   );
-  const [springStiffness, setSpringStiffness] = useState(300);
-  const [springDamping, setSpringDamping] = useState(25);
-  const [glowIntensity, setGlowIntensity] = useState<'subtle' | 'high-contrast'>('high-contrast');
+  const [speechRate, setSpeechRate] = useState<number>(
+    Number(localStorage.getItem('stackwa_speech_rate')) || 1.0
+  );
+  const [voiceTone, setVoiceTone] = useState<'supportive' | 'strict'>(
+    (localStorage.getItem('stackwa_voice_tone') as any) || 'supportive'
+  );
+
+  // Motion & VFX Physics Preferences
+  const [springStiffness, setSpringStiffness] = useState(
+    Number(localStorage.getItem('stackwa_spring_stiffness')) || 300
+  );
+  const [springDamping, setSpringDamping] = useState(
+    Number(localStorage.getItem('stackwa_spring_damping')) || 25
+  );
+  const [glowIntensity, setGlowIntensity] = useState<'subtle' | 'high-contrast'>(
+    (localStorage.getItem('stackwa_glow_intensity') as any) || 'high-contrast'
+  );
+
+  // Workspace & Editor Preferences
+  const [tabSpacing, setTabSpacing] = useState<number>(
+    Number(localStorage.getItem('stackwa_tab_spacing')) || 2
+  );
+  const [autoCloseBrackets, setAutoCloseBrackets] = useState(
+    localStorage.getItem('stackwa_auto_close_brackets') !== 'false'
+  );
+
   const [savedNotification, setSavedNotification] = useState<string | null>(null);
 
   const handleSaveSettings = () => {
-    localStorage.setItem('stackwa_scrimba_key', scrimbaKey);
-    localStorage.setItem('stackwa_anakin_app_id', anakinAppId);
-    localStorage.setItem('stackwa_anakin_api_key', anakinApiKey);
     localStorage.setItem('stackwa_sound_enabled', String(soundEnabled));
+    localStorage.setItem('stackwa_speech_rate', String(speechRate));
+    localStorage.setItem('stackwa_voice_tone', voiceTone);
     localStorage.setItem('stackwa_spring_stiffness', String(springStiffness));
     localStorage.setItem('stackwa_spring_damping', String(springDamping));
     localStorage.setItem('stackwa_glow_intensity', glowIntensity);
+    localStorage.setItem('stackwa_tab_spacing', String(tabSpacing));
+    localStorage.setItem('stackwa_auto_close_brackets', String(autoCloseBrackets));
 
-    setSavedNotification('All settings & integration keys saved to local storage!');
+    setSavedNotification('All preferences saved to local configuration!');
     setTimeout(() => setSavedNotification(null), 3000);
   };
 
@@ -79,18 +95,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 text-left">
       {/* Header */}
       <div className="space-y-2 border-b border-white/10 pb-6">
         <div className="flex items-center space-x-2">
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
             SYSTEM PREFERENCES
           </span>
-          <span className="text-xs text-neutral-400 font-mono">v2.4.0 Engine</span>
+          <span className="text-xs text-neutral-400 font-mono">v2.4.0 Studio</span>
         </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Settings & Integrations</h1>
+        <h1 className="text-3xl font-extrabold text-white tracking-tight">Preferences & Workspace</h1>
         <p className="text-sm text-neutral-400 leading-relaxed max-w-2xl">
-          Configure external ecosystem API keys, motion spring physics, audio feedback, and interview calibration data.
+          Customize your Socratic AI voice persona, motion spring physics, code editor settings, and interview data calibration.
         </p>
       </div>
 
@@ -108,67 +124,98 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Grid: 2 Columns */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* 1. Ecosystem API Keys */}
+        {/* 1. Audio & Socratic Voice Synthesis */}
         <div className="oled-panel rounded-3xl p-6 border border-white/10 bg-neutral-950/80 space-y-5">
           <div className="flex items-center space-x-3">
             <div className="w-9 h-9 rounded-2xl bg-rose-600/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
-              <Key className="w-4 h-4" />
+              <Mic className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">Ecosystem API Keys</h2>
-              <p className="text-[11px] text-neutral-400">Scrimba, Anakin.ai, Gemini Studio</p>
+              <h2 className="text-sm font-bold text-white">Audio & Speech Synthesis</h2>
+              <p className="text-[11px] text-neutral-400">Socratic AI Voice & Sound Effects</p>
             </div>
           </div>
 
-          {/* Scrimba Key */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <label className="font-semibold text-neutral-200">Scrimba Live API Key</label>
-              <span className="text-[10px] font-mono text-emerald-400 flex items-center space-x-1">
-                <CheckCircle2 className="w-3 h-3" />
-                <span>Connected</span>
-              </span>
-            </div>
-            <input
-              type="text"
-              value={scrimbaKey}
-              onChange={(e) => setScrimbaKey(e.target.value)}
-              placeholder="scr_live_..."
-              className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/10 focus:border-rose-500 text-xs font-mono text-white placeholder-neutral-600 focus:outline-none transition"
-            />
-            <div className="p-3 rounded-xl bg-neutral-900 border border-white/5 space-y-1.5 text-[11px]">
-              <div className="flex items-center justify-between font-mono">
-                <span className="text-neutral-400">Live Quota Usage:</span>
-                <span className="text-rose-400 font-bold">5 of 5 Daily Codecasts</span>
+          {/* Sound & Speech Synthesizer Toggle */}
+          <div className="p-3 rounded-2xl bg-black/60 border border-white/5 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              {soundEnabled ? (
+                <Volume2 className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-neutral-500" />
+              )}
+              <div>
+                <div className="text-xs font-semibold text-white">Socratic Audio Feedback</div>
+                <div className="text-[10px] text-neutral-400">Hear the AI lead ask clarifying questions aloud</div>
               </div>
-              <p className="text-neutral-400 text-[10px] leading-relaxed">
-                Refreshes every 24 hours. The codecast stepper continues running indefinitely in offline interactive mode once loaded.
-              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSoundEnabled(prev => !prev)}
+              className={`px-3 py-1 rounded-lg text-xs font-mono transition ${
+                soundEnabled 
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold' 
+                  : 'bg-white/5 text-neutral-400 border border-white/10'
+              }`}
+            >
+              {soundEnabled ? 'Enabled' : 'Muted'}
+            </button>
+          </div>
+
+          {/* Speech Rate */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-neutral-300">Speech Rate:</span>
+              <span className="text-rose-400 font-bold">{speechRate}x</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[0.9, 1.0, 1.1, 1.25].map(rate => (
+                <button
+                  key={rate}
+                  type="button"
+                  onClick={() => setSpeechRate(rate)}
+                  className={`py-1.5 rounded-xl border text-xs font-mono transition ${
+                    speechRate === rate
+                      ? 'border-rose-500 bg-rose-500/10 text-rose-300 font-bold'
+                      : 'border-white/5 bg-black/40 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {rate}x
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Anakin.ai App ID */}
+          {/* Socratic Lead Persona Tone */}
           <div className="space-y-2">
-            <label className="font-semibold text-xs text-neutral-200">Anakin.ai App ID (Optional)</label>
-            <input
-              type="text"
-              value={anakinAppId}
-              onChange={(e) => setAnakinAppId(e.target.value)}
-              placeholder="e.g. app_893274923"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/10 focus:border-rose-500 text-xs font-mono text-white placeholder-neutral-600 focus:outline-none transition"
-            />
-          </div>
+            <label className="text-xs font-semibold text-neutral-300">Interviewer Demeanor</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setVoiceTone('supportive')}
+                className={`p-3 rounded-xl border text-xs font-mono transition text-left ${
+                  voiceTone === 'supportive'
+                    ? 'border-rose-500 bg-rose-500/10 text-white'
+                    : 'border-white/5 bg-black/40 text-neutral-400'
+                }`}
+              >
+                <div className="font-bold text-rose-300">Staff Engineer</div>
+                <div className="text-[10px] text-neutral-400 mt-0.5">Socratic & collaborative</div>
+              </button>
 
-          {/* Anakin.ai API Key */}
-          <div className="space-y-2">
-            <label className="font-semibold text-xs text-neutral-200">Anakin.ai API Key (Optional)</label>
-            <input
-              type="password"
-              value={anakinApiKey}
-              onChange={(e) => setAnakinApiKey(e.target.value)}
-              placeholder="anakin_live_..."
-              className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/10 focus:border-rose-500 text-xs font-mono text-white placeholder-neutral-600 focus:outline-none transition"
-            />
+              <button
+                type="button"
+                onClick={() => setVoiceTone('strict')}
+                className={`p-3 rounded-xl border text-xs font-mono transition text-left ${
+                  voiceTone === 'strict'
+                    ? 'border-rose-500 bg-rose-500/10 text-white'
+                    : 'border-white/5 bg-black/40 text-neutral-400'
+                }`}
+              >
+                <div className="font-bold text-rose-300">Hiring Committee</div>
+                <div className="text-[10px] text-neutral-400 mt-0.5">Rigorous edge-case defense</div>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -179,8 +226,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Sliders className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">Motion & VFX Physics</h2>
-              <p className="text-[11px] text-neutral-400">Framer Motion Kinetic Identity</p>
+              <h2 className="text-sm font-bold text-white">Motion & Kinetic Identity</h2>
+              <p className="text-[11px] text-neutral-400">Framer Motion Spring Physics</p>
             </div>
           </div>
 
@@ -222,7 +269,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* OLED Deep Red Contrast */}
           <div className="space-y-2 pt-1">
-            <label className="text-xs font-semibold text-neutral-300">OLED Deep Glow Palette</label>
+            <label className="text-xs font-semibold text-neutral-300">OLED Palette Contrast</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -251,34 +298,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
           </div>
-
-          {/* Sound & Speech Synthesizer */}
-          <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              {soundEnabled ? (
-                <Volume2 className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <VolumeX className="w-4 h-4 text-neutral-500" />
-              )}
-              <span className="text-xs text-neutral-300">Socratic Audio Feedback</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSoundEnabled(prev => !prev)}
-              className={`px-3 py-1 rounded-lg text-xs font-mono transition ${
-                soundEnabled 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                  : 'bg-white/5 text-neutral-400 border border-white/10'
-              }`}
-            >
-              {soundEnabled ? 'Enabled' : 'Muted'}
-            </button>
-          </div>
         </div>
 
       </div>
 
-      {/* 3. Account, Calibration & Cloud Data */}
+      {/* 3. Editor & Sandbox Preferences */}
+      <div className="oled-panel rounded-3xl p-6 border border-white/10 bg-neutral-950/80 space-y-5">
+        <div className="flex items-center space-x-3">
+          <div className="w-9 h-9 rounded-2xl bg-rose-600/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
+            <Code2 className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-white">Editor & In-Browser Execution Sandbox</h2>
+            <p className="text-[11px] text-neutral-400">Monaco Editor & Pyodide runtime defaults</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-4 rounded-2xl bg-black/60 border border-white/5 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-white">Indentation Tab Spacing</div>
+              <div className="text-[10px] text-neutral-400">Number of spaces per indentation level</div>
+            </div>
+            <div className="flex space-x-1.5">
+              {[2, 4].map(sp => (
+                <button
+                  key={sp}
+                  type="button"
+                  onClick={() => setTabSpacing(sp)}
+                  className={`px-3 py-1 rounded-lg text-xs font-mono transition ${
+                    tabSpacing === sp
+                      ? 'bg-rose-600 text-white font-bold'
+                      : 'bg-white/5 text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  {sp} spaces
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-black/60 border border-white/5 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-white">Auto-Close Brackets & Quotes</div>
+              <div className="text-[10px] text-neutral-400">Auto-insert matching pair characters</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoCloseBrackets(prev => !prev)}
+              className={`px-3 py-1 rounded-lg text-xs font-mono transition ${
+                autoCloseBrackets
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold'
+                  : 'bg-white/5 text-neutral-400 border border-white/10'
+              }`}
+            >
+              {autoCloseBrackets ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Account, Calibration & Data Ownership */}
       <div className="oled-panel rounded-3xl p-6 border border-white/10 bg-neutral-950/80 space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">

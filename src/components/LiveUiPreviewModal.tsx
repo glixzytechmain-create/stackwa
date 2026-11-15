@@ -613,7 +613,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
     return () => { isMounted = false; };
   }, [isOpen, code, functionName, effectiveLanguage, referenceUiCode, previewMode, title, isUiChallenge, testCases, solutionCode, description, outcome]);
 
-  const handleManualRunGemini = () => {
+  const handleManualParityEvaluation = () => {
     setIsEvaluatingSimilarity(true);
     const effectiveReferenceCode = referenceUiCode || (isUiChallenge ? `
       function Solution() {
@@ -731,16 +731,16 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                 </div>
               )}
 
-              {/* Manual Re-Run with Gemini Button */}
+              {/* Manual Re-Evaluate Parity Button */}
               {activeTab === 'ui-sandbox' && (
                 <button
-                  onClick={handleManualRunGemini}
+                  onClick={handleManualParityEvaluation}
                   disabled={isEvaluatingSimilarity}
                   className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-xs font-mono font-bold transition disabled:opacity-50"
-                  title="Execute candidate code with Gemini and re-evaluate similarity"
+                  title="Execute candidate code and re-evaluate similarity"
                 >
                   <Sparkles className={`w-3.5 h-3.5 ${isEvaluatingSimilarity ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Re-Run with Gemini</span>
+                  <span className="hidden sm:inline">Re-Evaluate Parity</span>
                 </button>
               )}
 
@@ -769,7 +769,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                 {isEvaluatingSimilarity ? (
                   <div className="flex items-center space-x-1.5 text-rose-400">
                     <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                    <span>Gemini is running candidate code & judging real similarity...</span>
+                    <span>Stackwa AI Engine is running candidate code & judging real similarity...</span>
                   </div>
                 ) : similarity ? (
                   <div className="flex items-center space-x-2">

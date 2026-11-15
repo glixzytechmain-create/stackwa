@@ -284,7 +284,7 @@ What specific invariant, boundary condition, or architectural pattern should we 
               <span>{isSynthesizing ? 'Auditing Submissions...' : 'Re-Synthesize Report'}</span>
             </button>
             <span className="text-[10px] text-neutral-500 font-mono">
-              Powered by Gemini 3.8 Flash & Real Code Judge
+              Powered by Stackwa Socratic Engine & Real Code Judge
             </span>
           </div>
         </div>

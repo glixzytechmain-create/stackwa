@@ -1,6 +1,6 @@
 import { ProblemTestCase } from '../services/codeExecutionService';
 
-export type TabType = 'dsa' | 'vaults' | 'sponsors' | 'settings' | 'shortcuts' | 'ui-design' | 'mock-interview' | 'dashboard' | 'roadmap';
+export type TabType = 'dsa' | 'vaults' | 'cheatsheet' | 'sponsors' | 'settings' | 'shortcuts' | 'ui-design' | 'mock-interview' | 'dashboard' | 'roadmap';
 
 export interface ProgressiveHint {
   id: number;
