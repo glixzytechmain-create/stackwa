@@ -64,6 +64,7 @@ import { RoadmapView } from './RoadmapView';
 import { AiMockRoom } from './AiMockRoom';
 import { ProgressDashboard } from './ProgressDashboard';
 import { VoiceDebateRoom } from './VoiceDebateRoom';
+import { generateHighEffortRoadmap } from '../services/roadmapService';
 import confetti from 'canvas-confetti';
 
 interface InterviewEnvironmentProps {
@@ -2038,46 +2039,23 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
     >
       <RoadmapView
-        profile={profile || {
-          targetCompany: track.company,
-          role: track.role,
-          seniority: 'Senior',
-          interviewDate: track.dateLabel,
-          daysRemaining: track.daysRemaining || 7,
-          focusAreas: track.focusTopics,
+        profile={{
+          ...(profile || {}),
+          targetCompany: track.company || profile?.targetCompany || 'Tech Company',
+          role: track.role || profile?.role || 'Software Engineer',
+          seniority: profile?.seniority || 'Senior',
+          interviewDate: profile?.interviewDate || track.dateLabel || '',
+          daysRemaining: track.daysRemaining || profile?.daysRemaining || 7,
+          focusAreas: track.focusTopics || profile?.focusAreas || ['System Architecture', 'Algorithmic Optimization'],
           calendarConnected: false,
           onboardingCompleted: true,
           isGeneralPractice: false
         }}
-        roadmap={roadmap.length > 0 ? roadmap : [
-          {
-            dayNumber: 1,
-            dateLabel: 'Day 1 — Company Invariants',
-            theme: `${track.company} Core Architecture & Monotonic Bounds`,
-            dsaProblemId: 'distributed-rate-limiter',
-            uiChallengeId: 'linear-command-palette',
-            dailyRitual: 'Morning 20m: Formulate Big-O time and space bounds out loud.',
-            isCompleted: true
-          },
-          {
-            dayNumber: 2,
-            dateLabel: 'Day 2 — State Boundaries',
-            theme: `${track.company} State Machine & Mutex Isolation`,
-            dsaProblemId: 'idempotent-transaction-ledger',
-            uiChallengeId: 'airbnb-filter-drawer',
-            dailyRitual: 'Map component boundaries on paper before writing code.',
-            isCompleted: false
-          },
-          {
-            dayNumber: 3,
-            dateLabel: 'Day 3 — Defensive Concurrency',
-            theme: `${track.company} Split-Brain & Monotonic Deque`,
-            dsaProblemId: 'lru-cache-eviction',
-            uiChallengeId: 'spotify-queue-drawer',
-            dailyRitual: 'Trace cache eviction priority in O(1) time.',
-            isCompleted: false
-          }
-        ]}
+        roadmap={
+          roadmap.length > 0 && roadmap[0]?.theme.toLowerCase().includes((track.company || '').toLowerCase())
+            ? roadmap
+            : generateHighEffortRoadmap(track.company, track.role, track.daysRemaining || 7, track.focusTopics)
+        }
         onToggleDay={onToggleDay || (() => {})}
         onOpenSettings={onOpenSettings || (() => {})}
         setActiveTab={() => {}}

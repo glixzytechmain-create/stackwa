@@ -47,6 +47,7 @@ export const VoiceDebateRoom: React.FC<VoiceDebateRoomProps> = ({
   const [evaluation, setEvaluation] = useState<VoiceDebateEvaluation | null>(null);
 
   const [transcript, setTranscript] = useState<DebateMessage[]>([]);
+  const [micStatus, setMicStatus] = useState<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   // Subscribe to voice speaking state for waveforms
@@ -67,10 +68,10 @@ export const VoiceDebateRoom: React.FC<VoiceDebateRoomProps> = ({
     voiceService.setVoiceGender(gender);
   };
 
-  // Initial greeting from AI interviewer
+  // Initial authentic technical interview greeting from AI Lead Interviewer
   useEffect(() => {
     if (transcript.length === 0) {
-      const initialGreeting = `Welcome to Round 3: Live Technical Defense for ${role} at ${company}. You've proposed your solution for "${problemTitle}". Now let's stress-test your architecture. Defend your design: why did you choose this invariant, and how does your solution behave under heavy concurrency or edge-case constraints?`;
+      const initialGreeting = `Hello and welcome! I'm your lead technical interviewer for the ${role} role at ${company}. Great to meet you today. To get started with our session on ${problemTitle}, could you briefly introduce yourself and share how you generally approached the requirements?`;
       
       const greetingMsg: DebateMessage = {
         id: `msg-${Date.now()}`,
@@ -92,24 +93,57 @@ export const VoiceDebateRoom: React.FC<VoiceDebateRoomProps> = ({
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [transcript, isAiThinking]);
 
-  // Toggle Mic Recording (Speech-to-Text)
-  const toggleListening = () => {
+  // Toggle Mic Recording (Speech-to-Text) with Explicit Permission Check
+  const toggleListening = async () => {
     if (isListening) {
       voiceService.stopListening();
       setIsListening(false);
+      setMicStatus(null);
     } else {
       voiceService.stopSpeaking(); // Pause interviewer speech while candidate speaks
+      setMicStatus('Connecting to microphone...');
+
+      // Request browser microphone access explicitly (essential for Safari/Chrome permissions)
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Stop stream tracks immediately so speech recognition takes exclusive access
+          stream.getTracks().forEach(track => track.stop());
+        } catch (permErr: any) {
+          console.warn("Microphone access error:", permErr);
+          setMicStatus('Microphone blocked. Please allow mic in browser settings.');
+          setTimeout(() => setMicStatus(null), 4000);
+          return;
+        }
+      }
+
+      setMicStatus('Microphone Live • Listening...');
       const started = voiceService.startListening(
         (recognizedText) => {
           setCandidateInput(recognizedText);
         },
         {
-          onEnd: () => setIsListening(false),
-          onError: () => setIsListening(false)
+          onEnd: () => {
+            setIsListening(false);
+            setMicStatus(null);
+          },
+          onError: (err) => {
+            console.warn("Speech recognition error:", err);
+            setIsListening(false);
+            if (err === 'not-allowed') {
+              setMicStatus('Microphone permission blocked. Please allow in Safari settings.');
+            } else {
+              setMicStatus('Microphone paused. You can also type your reply.');
+            }
+            setTimeout(() => setMicStatus(null), 4000);
+          }
         }
       );
       if (started) {
         setIsListening(true);
+      } else {
+        setMicStatus('Speech recognition not supported in this browser. Please type.');
+        setTimeout(() => setMicStatus(null), 4000);
       }
     }
   };
@@ -122,6 +156,7 @@ export const VoiceDebateRoom: React.FC<VoiceDebateRoomProps> = ({
     if (isListening) {
       voiceService.stopListening();
       setIsListening(false);
+      setMicStatus(null);
     }
 
     const candidateMsg: DebateMessage = {
@@ -136,22 +171,30 @@ export const VoiceDebateRoom: React.FC<VoiceDebateRoomProps> = ({
     setCandidateInput('');
     setIsAiThinking(true);
 
-    // Call Gemini for authentic Socratic pushback
+    // Call Gemini for authentic technical interview dialogue
     try {
-      const prompt = `You are a Staff Technical Interviewer at ${company} conducting a live voice debate for a ${role} position.
+      const prompt = `You are a Principal Technical Interviewer at ${company} conducting a natural, high-signal technical interview for a ${role} position.
 PROBLEM DISCUSSED: ${problemTitle} (${problemCategory}).
-DEBATE INTENSITY / DIFFICULTY: ${difficulty}.
+INTERVIEW LEVEL / SENIORITY: ${difficulty}.
 
 Conversation so far:
 ${updatedTranscript.map(t => `${t.sender === 'interviewer' ? 'Interviewer' : 'Candidate'}: ${t.text}`).join('\n')}
 
-INSTRUCTIONS:
-1. Respond Socratically and crisply (2 to 3 sentences maximum, natural spoken English).
-2. Directly push back or challenge their assumptions based on the ${difficulty} tier:
-   - If Foundational: Probe Big-O time/space tradeoffs and simple failure bounds.
-   - If Rigorous: Question memory allocation, cache eviction, concurrency locks, or race conditions.
-   - If Principal Architect: Attack split-brain partitioning, cascading failures, network jitter, or tail latency.
-3. Speak like a real human engineer in an interview room. DO NOT use markdown lists, code blocks, or asterisks.`;
+INSTRUCTIONS & CONVERSATIONAL PHASING:
+1. NATURAL HUMAN CONVERSATION:
+   - Speak like a friendly, sharp senior engineer having a real conversation in an interview room.
+   - Keep spoken turns concise (2-3 sentences max) so it feels like natural spoken dialogue.
+   - NO markdown formatting, asterisks, bullet points, or code blocks in your spoken output.
+2. DYNAMIC CONVERSATION STAGES:
+   - Stage 1 (Greeting & Introduction): If the candidate just greeted you or introduced themselves, acknowledge their background warmly and invite them to share how they thought about ${problemTitle} or their high-level architectural choices.
+   - Stage 2 (Technical Discussion): Listen to their explanation. Ask clarifying questions about what data structures or boundaries they decided to use.
+   - Stage 3 (Targeted Socratic Exploration): ONLY probe or challenge a claim if the candidate ACTUALLY made that claim in the conversation! NEVER claim the candidate said something they didn't say.
+3. ADAPTIVE PROBING BASED ON DIFFICULTY (${difficulty}):
+   - If Foundational: Ask about Big-O bounds and straightforward edge cases based on their stated logic.
+   - If Rigorous: Probe memory footprint, concurrency safety, or cache invalidation relevant to their chosen solution.
+   - If Principal Architect: Discuss distributed state consistency, cascading failure mitigation, or tail latency tradeoffs.
+4. HONEST ATTRIBUTION:
+   - Ground every response strictly in what the candidate actually just said. Do NOT invent claims or put words in their mouth.`;
 
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY || ''}`, {
         method: 'POST',
@@ -184,7 +227,7 @@ INSTRUCTIONS:
     }
 
     // Fallback response
-    const fallbackAi = `Under high-throughput pressure, how would this design hold up if multiple workers mutate shared state simultaneously? Walk me through your concurrency lock boundary.`;
+    const fallbackAi = `Thanks for walking through that. Looking at the invariants for ${problemTitle}, what would you consider the primary trade-off of this approach compared to an alternative design?`;
     const fallbackMsg: DebateMessage = {
       id: `msg-${Date.now()}-ai`,
       sender: 'interviewer',
@@ -279,14 +322,16 @@ INSTRUCTIONS:
                   : 'bg-neutral-600'
             }`} />
             <div className="text-xs font-mono">
-              {isSpeaking ? (
+              {micStatus ? (
+                <span className="text-amber-400 font-bold">{micStatus}</span>
+              ) : isSpeaking ? (
                 <span className="text-rose-400 font-bold">Interviewer Speaking ({voiceGender} voice)...</span>
               ) : isListening ? (
-                <span className="text-emerald-400 font-bold">Microphone Live • Listening to your defense...</span>
+                <span className="text-emerald-400 font-bold">Microphone Live • Listening to you...</span>
               ) : isAiThinking ? (
-                <span className="text-amber-400 font-bold">Interviewer analyzing your argument...</span>
+                <span className="text-amber-400 font-bold">Interviewer evaluating your thought process...</span>
               ) : (
-                <span className="text-neutral-400">Ready • Speak via microphone or type your defense below</span>
+                <span className="text-neutral-400">Ready • Speak via microphone or type your response below</span>
               )}
             </div>
           </div>

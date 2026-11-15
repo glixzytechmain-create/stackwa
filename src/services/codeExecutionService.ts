@@ -132,12 +132,70 @@ function runJavaScript(
       }
     };
 
+    // Isolated Mock DOM environment to sandbox code and prevent any mutations to the host document
+    const createMockElement = () => {
+      const el: any = {
+        style: {},
+        classList: { add: () => {}, remove: () => {}, contains: () => false, toggle: () => false },
+        setAttribute: () => {},
+        getAttribute: () => null,
+        removeAttribute: () => {},
+        appendChild: () => el,
+        removeChild: () => el,
+        replaceChild: () => el,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => true,
+        children: [],
+        childNodes: [],
+        innerHTML: '',
+        textContent: '',
+        value: ''
+      };
+      return el;
+    };
+
+    const fakeDocument: any = {
+      createElement: () => createMockElement(),
+      createTextNode: () => createMockElement(),
+      createDocumentFragment: () => createMockElement(),
+      getElementById: () => null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      getElementsByClassName: () => [],
+      getElementsByTagName: () => [],
+      body: createMockElement(),
+      head: createMockElement(),
+      documentElement: createMockElement(),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      cookie: '',
+      title: 'Sandbox'
+    };
+
+    const fakeWindow: any = {
+      document: fakeDocument,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      setTimeout: (fn: any, ms: any) => setTimeout(fn, ms),
+      clearTimeout: (id: any) => clearTimeout(id),
+      setInterval: () => 0,
+      clearInterval: () => {},
+      requestAnimationFrame: (cb: any) => setTimeout(cb, 16),
+      cancelAnimationFrame: () => {},
+      localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} },
+      sessionStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} },
+      location: { href: 'about:blank', origin: 'null' },
+      navigator: { userAgent: 'Sandbox' },
+      parent: null,
+      top: null
+    };
+
     // Auto-detect function name in user code
     const snakeName = toSnakeCase(functionName);
     
-    // Compile and resolve target function dynamically
-    // Compile and resolve target function dynamically
-    const factory = new Function('console', `
+    // Compile and resolve target function dynamically inside isolated sandbox
+    const factory = new Function('console', 'document', 'window', 'globalThis', 'parent', 'top', `
       ${userCode}
       
       if (typeof ${functionName} === 'function') {
@@ -154,7 +212,7 @@ function runJavaScript(
 
     let fn: any = null;
     try {
-      fn = factory(customConsole);
+      fn = factory(customConsole, fakeDocument, fakeWindow, fakeWindow, null, null);
     } catch (syntaxErr: any) {
       return {
         allPassed: false,
@@ -172,21 +230,21 @@ function runJavaScript(
         if (fnMatch) {
           const anyName = fnMatch[1] || fnMatch[2];
           if (anyName) {
-            const fallbackFactory = new Function('console', `
+            const fallbackFactory = new Function('console', 'document', 'window', 'globalThis', 'parent', 'top', `
               ${userCode}
               return ${anyName};
             `);
-            fn = fallbackFactory(customConsole);
+            fn = fallbackFactory(customConsole, fakeDocument, fakeWindow, fakeWindow, null, null);
           }
         }
       } catch (e) {}
     }
 
     if (typeof fn !== 'function') {
-      // Execute as top-level script safely
+      // Execute as top-level script safely inside isolated sandbox
       try {
-        const scriptRunner = new Function('console', `${userCode}`);
-        scriptRunner(customConsole);
+        const scriptRunner = new Function('console', 'document', 'window', 'globalThis', 'parent', 'top', `${userCode}`);
+        scriptRunner(customConsole, fakeDocument, fakeWindow, fakeWindow, null, null);
       } catch (e: any) {
         logs.push(`[Runtime error]: ${e.message}`);
       }

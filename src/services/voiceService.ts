@@ -144,6 +144,11 @@ class VoiceService {
     return this.currentUtterance;
   }
 
+  public isSpeechRecognitionSupported(): boolean {
+    if (typeof window === 'undefined') return false;
+    return Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  }
+
   // Speech-To-Text (STT) via Web Speech API
   public startListening(
     onResult: (transcript: string) => void,
@@ -163,11 +168,11 @@ class VoiceService {
 
     try {
       if (this.recognition) {
-        this.recognition.abort();
+        try { this.recognition.abort(); } catch {}
       }
 
       this.recognition = new SpeechRec();
-      this.recognition.continuous = false;
+      this.recognition.continuous = true;
       this.recognition.interimResults = true;
       this.recognition.lang = 'en-US';
 
@@ -176,20 +181,20 @@ class VoiceService {
       };
 
       this.recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            finalTranscript += event.results[i][0].transcript;
-          }
+        let transcript = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
         }
-        if (finalTranscript.trim()) {
-          onResult(finalTranscript.trim());
+        if (transcript.trim()) {
+          onResult(transcript.trim());
         }
       };
 
       this.recognition.onerror = (event: any) => {
+        if (event.error === 'no-speech') {
+          // Gracefully ignore brief pauses while candidate is thinking
+          return;
+        }
         this.isListening = false;
         options?.onError?.(event.error);
       };

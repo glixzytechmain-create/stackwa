@@ -7,9 +7,11 @@ import {
   Code2, 
   Layers, 
   Clock,
-  Settings
+  Settings,
+  Download
 } from 'lucide-react';
 import { UserInterviewProfile, DayPlan, TabType } from '../types';
+import { downloadRoadmapIcs } from '../services/roadmapService';
 
 interface RoadmapViewProps {
   profile: UserInterviewProfile | null;
@@ -68,7 +70,7 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({
             Curated daily rituals combining <strong>Interview Cake DSA</strong>, <strong>Mobbin UI Architecture</strong>, and <strong>Socratic AI Coaching</strong> aligned with 2026 hiring benchmarks.
           </p>
 
-          <div className="pt-2 flex items-center space-x-4 text-xs text-neutral-400">
+          <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-neutral-400">
             <div className="flex items-center space-x-1.5">
               <Flame className="w-4 h-4 text-rose-400 fill-rose-400" />
               <span>{completedCount} of {roadmap.length} Days Completed ({progressPercent}%)</span>
@@ -79,6 +81,16 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
+
+            {/* Bulk Calendar Export: All Dates at Once */}
+            <button
+              onClick={() => downloadRoadmapIcs(roadmap, profile?.targetCompany || 'Tech Company', profile?.role || 'Software Engineer')}
+              className="ml-auto inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-bold text-xs shadow-lg shadow-sky-600/20 transition active:scale-[0.98]"
+              title="Import all dates at once into Apple Calendar, Google Calendar, or Outlook"
+            >
+              <Download className="w-4 h-4" />
+              <span>Import Entire Roadmap to Calendar (.ics)</span>
+            </button>
           </div>
         </div>
       </div>

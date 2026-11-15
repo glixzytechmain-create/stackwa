@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Code2, 
-  Flame, 
   LogOut, 
   Home,
   ChevronDown,
@@ -28,7 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab, 
   setActiveTab, 
   user, 
-  streakDays,
+  streakDays: _streakDays,
   profile,
   onOpenOnboarding,
   onNavigateHome
@@ -141,11 +140,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>+ Calibrate Goal</span>
             </button>
 
-            {/* Streak Counter */}
-            <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-bold font-mono">
-              <Flame className="w-3.5 h-3.5 fill-rose-400" />
-              <span>{streakDays}d Streak</span>
-            </div>
 
             {/* User Profile & Settings Dropdown */}
             <div className="relative" ref={menuRef}>

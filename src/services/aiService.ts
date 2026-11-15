@@ -1366,7 +1366,17 @@ export async function evaluateUiSimilarity(
   const totalCount = testCases.length;
   if (totalCount > 0 && functionName) {
     try {
-      const fn = new Function(`${userCode}\nreturn typeof ${functionName} === 'function' ? ${functionName} : (typeof window !== 'undefined' ? window['${functionName}'] : null);`)();
+      const mockDoc: any = {
+        createElement: () => ({ style: {}, classList: { add(){}, remove(){} }, setAttribute(){}, appendChild(){} }),
+        getElementById: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        body: { appendChild: () => {}, removeChild: () => {}, style: {} }
+      };
+      const fn = new Function('document', 'window', 'globalThis', 'parent', 'top', `
+        ${userCode}
+        return typeof ${functionName} === 'function' ? ${functionName} : (typeof window !== 'undefined' ? window['${functionName}'] : null);
+      `)(mockDoc, mockDoc, mockDoc, null, null);
       if (typeof fn === 'function') {
         testCases.forEach(tc => {
           try {

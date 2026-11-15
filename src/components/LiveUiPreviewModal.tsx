@@ -826,7 +826,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                       <iframe
                         srcDoc={srcDoc}
                         title="Candidate UI Preview"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-pointer-lock"
+                        sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
                         className="w-full flex-1 border-0 bg-neutral-950"
                       />
                     )}
@@ -846,7 +846,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                     <iframe
                       srcDoc={referenceSrcDoc}
                       title="AI Reference UI Standard"
-                      sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-pointer-lock"
+                      sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
                       className="w-full flex-1 border-0 bg-neutral-950"
                     />
                   </div>
@@ -873,7 +873,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                     <iframe
                       srcDoc={srcDoc}
                       title="Live UI Component Sandbox"
-                      sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-pointer-lock"
+                      sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
                       className="w-full flex-1 border-0 bg-neutral-950"
                     />
                   )}

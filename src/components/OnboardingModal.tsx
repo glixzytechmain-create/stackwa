@@ -12,6 +12,7 @@ import {
 import { motion } from 'framer-motion';
 import { UserInterviewProfile, DayPlan, DsaProblem, OnboardingMessage } from '../types';
 import { conductOnboardingTurn, generateDynamicChallenge } from '../services/aiService';
+import { generateHighEffortRoadmap } from '../services/roadmapService';
 import { voiceService } from '../services/voiceService';
 import { DecryptedText } from './DecryptedText';
 
@@ -66,11 +67,19 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleVoiceToggle = () => {
+  const handleVoiceToggle = async () => {
     if (isListening) {
       voiceService.stopListening();
       setIsListening(false);
     } else {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+        } catch (e) {
+          console.warn("Microphone access blocked:", e);
+        }
+      }
       const started = voiceService.startListening(
         (transcript) => {
           setInputText(transcript);
@@ -138,21 +147,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         // Synthesize dynamic challenge for their exact company
         const customChallenge = await generateDynamicChallenge(targetCompany, role, focusAreas[0]);
 
-        // Generate tailored daywise roadmap matching their exact timeline
-        const roadmap: DayPlan[] = [];
-        for (let d = 1; d <= Math.min(days, 14); d++) {
-          roadmap.push({
-            dayNumber: d,
-            dateLabel: `Day ${d} — ${d === 1 ? 'Diagnostic & Constraints' : d === days ? 'Final Mock Simulation' : 'Deep Mastery'}`,
-            theme: d === 1 
-              ? `${targetCompany} Core Invariants & Complexity` 
-              : `${focusAreas[(d - 1) % focusAreas.length]} Deep Dive`,
-            dsaProblemId: customChallenge.id,
-            uiChallengeId: 'linear-command-palette',
-            dailyRitual: `Spend 25 minutes solving ${targetCompany} algorithmic boundaries without looking at hints.`,
-            isCompleted: false
-          });
-        }
+        // Generate tailored high-effort daywise roadmap matching their exact timeline
+        const roadmap: DayPlan[] = generateHighEffortRoadmap(targetCompany, role, days, focusAreas).map(d => ({
+          ...d,
+          dsaProblemId: customChallenge.id
+        }));
 
         const profile: UserInterviewProfile = {
           targetCompany,

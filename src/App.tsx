@@ -17,6 +17,7 @@ import { SponsorsView } from './components/SponsorsView';
 import { ShortcutsView } from './components/ShortcutsView';
 import { Building2, Sparkles, Code2 } from 'lucide-react';
 import { TabType, UserInterviewProfile, DayPlan, DsaProblem, TestSessionRecord, SavedVisualExplanation } from './types';
+import { generateHighEffortRoadmap } from './services/roadmapService';
 import { DSA_PROBLEMS } from './data/dsaProblems';
 import { UI_CHALLENGES } from './data/uiFlows';
 import { 
@@ -140,6 +141,42 @@ export const App: React.FC = () => {
 
   // Contextual AI prompt triggered from code editor highlight
   const [externalAiPrompt, setExternalAiPrompt] = useState<string | null>(null);
+
+  // DOM Isolation Guard: Evict any stray elements injected directly into document.body outside #root
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const cleanupRogueNodes = () => {
+      const children = Array.from(document.body.children);
+      children.forEach(child => {
+        if (child.id !== 'root' && child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE' && child.tagName !== 'LINK') {
+          try {
+            child.remove();
+          } catch {}
+        }
+      });
+    };
+    cleanupRogueNodes();
+    const observer = new MutationObserver(cleanupRogueNodes);
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, []);
+
+  // Enrich any saved legacy repetitive roadmap with tailored high-effort rituals
+  useEffect(() => {
+    if (roadmap && roadmap.length > 0) {
+      const isLegacyRepetitive = roadmap.every(d => d.dailyRitual === roadmap[0].dailyRitual);
+      if (isLegacyRepetitive) {
+        const enriched = generateHighEffortRoadmap(
+          profile?.targetCompany || 'Tech Company',
+          profile?.role || 'Software Engineer',
+          roadmap.length,
+          profile?.focusAreas
+        );
+        setRoadmap(enriched);
+        localStorage.setItem('stackwa_daywise_roadmap', JSON.stringify(enriched));
+      }
+    }
+  }, [profile?.targetCompany, profile?.role]);
 
   // Subscribe to Firebase Auth
   useEffect(() => {
