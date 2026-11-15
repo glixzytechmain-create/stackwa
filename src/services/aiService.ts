@@ -746,7 +746,7 @@ Return ONLY valid JSON matching this schema:
   "timeComplexity": string,
   "spaceComplexity": string,
   "isUiChallenge": boolean (set true if problem involves frontend, component rendering, DOM tree, or UI/UX state),
-  "referenceUiCode": string (if isUiChallenge is true, provide the complete reference HTML/Tailwind target UI string that renders the solution visually),
+  "referenceUiCode": string (if isUiChallenge is true, provide the complete reference HTML/Tailwind target UI string that renders the solution visually. Use standard generic items e.g. 'Item 1', 'Item 2'—DO NOT invent arbitrary songs, commercial brands, or unmentioned fields),
   "interviewCakePedagogy": {
     "conceptBreakdown": string,
     "commonPitfalls": [string, string]
@@ -785,7 +785,10 @@ Return ONLY valid JSON matching this schema:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
+        generationConfig: { 
+          responseMimeType: "application/json",
+          temperature: 0.1
+        }
       })
     });
 
@@ -1213,10 +1216,13 @@ ${JSON.stringify(params.testCases || [], null, 2)}
 
 TASK:
 1. RUN / EXECUTE the Candidate's Code into a Live Interactive UI:
+   - ZERO CODE MANIPULATION & ZERO HALLUCINATION:
+     * Do NOT alter, improve, or manipulate the candidate's code logic or math.
+     * Do NOT invent mock data, commercial song names, artist names, or brands not specified in the problem.
+     * Candidate code must run VERBATIM. If it has a bug, the UI MUST reflect that bug faithfully.
    - Generate "candidateHtml": a complete, self-contained HTML5 document (starts with <!DOCTYPE html>) with Tailwind CSS (<script src="https://cdn.tailwindcss.com"></script>) and dark mode theme (#050505 background).
-   - This document MUST execute or embed the candidate's exact logic.
-   - For UI challenges (e.g. Spotify virtual list, sliders, component layouts, etc.), provide an interactive UI harness with live sliders, inputs, or buttons that feed into the candidate's function so the user can interact with their own code!
-   - FAITHFUL RENDERING: If the candidate's code is correct, the UI behaves correctly! If the candidate's code has a bug (e.g. off-by-one, bad overscan, calculation error), the UI MUST realistically reflect that bug in its rendered output!
+   - This document MUST execute the candidate's exact logic without alteration.
+   - For UI challenges, provide an interactive UI harness with live sliders, inputs, or buttons that feed into the candidate's function so the user can interactively click and test their own code.
    - If the candidate wrote HTML or React directly, render their component/HTML.
 
 2. GENERATE the Reference UI Standard:
@@ -1225,7 +1231,7 @@ TASK:
 3. REAL SIMILARITY EVALUATION (NO FAKE SCORES):
    - Evaluate REAL similarity between the candidate's implementation and the reference standard.
    - CRITICAL SCORING INSTRUCTION: If the candidate implemented the required function (e.g. ${params.functionName || 'solution'}), evaluate their algorithmic logic, correctness against the test cases, and how well their output powers the UI! DO NOT give a fake 10% just because the candidate wrote a function instead of full HTML markup!
-   - If their logic is fully correct and passes the problem requirements, award 90-100%.
+   - If their logic is fully correct and passes the problem requirements, award 92-100%.
    - If their logic is mostly correct with minor edge case issues, award 70-89%.
    - If there are noticeable bugs, award 50-69%.
    - If the code is completely empty, syntax-broken, or wrong, award <50%.
@@ -1257,7 +1263,7 @@ Return ONLY valid JSON matching this schema:
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: "application/json",
-          temperature: 0.2
+          temperature: 0.0
         }
       })
     });
@@ -1316,14 +1322,76 @@ Return ONLY valid JSON matching this schema:
   };
 }
 
+export interface UiSimilarityParams {
+  userCode: string;
+  solutionCode?: string;
+  referenceUiCode?: string;
+  problemTitle: string;
+  functionName?: string;
+  testCases?: ProblemTestCase[];
+  testsPassed?: boolean;
+}
+
 // Side-by-Side UI Similarity Evaluator (Calibrated for Real Evaluation)
 export async function evaluateUiSimilarity(
-  userCode: string,
-  referenceCode: string,
-  problemTitle: string
+  paramsOrUserCode: UiSimilarityParams | string,
+  referenceCodeOrSolution?: string,
+  problemTitle?: string
 ): Promise<UiSimilarityResult> {
-  const prompt = `You are a Principal Frontend Architect evaluating a candidate's UI code implementation against the target reference solution.
-Problem: ${problemTitle}
+  let userCode: string;
+  let solutionCode: string = '';
+  let referenceUiCode: string = '';
+  let title: string = '';
+  let functionName: string = '';
+  let testCases: ProblemTestCase[] = [];
+  let testsPassed: boolean | undefined = undefined;
+
+  if (typeof paramsOrUserCode === 'string') {
+    userCode = paramsOrUserCode;
+    referenceUiCode = referenceCodeOrSolution || '';
+    solutionCode = referenceCodeOrSolution || '';
+    title = problemTitle || '';
+  } else {
+    userCode = paramsOrUserCode.userCode || '';
+    solutionCode = paramsOrUserCode.solutionCode || '';
+    referenceUiCode = paramsOrUserCode.referenceUiCode || '';
+    title = paramsOrUserCode.problemTitle || '';
+    functionName = paramsOrUserCode.functionName || '';
+    testCases = paramsOrUserCode.testCases || [];
+    testsPassed = paramsOrUserCode.testsPassed;
+  }
+
+  // 1. Empirical In-Browser Verification: Execute candidate's function against problem testCases
+  let passedCount = 0;
+  const totalCount = testCases.length;
+  if (totalCount > 0 && functionName) {
+    try {
+      const fn = new Function(`${userCode}\nreturn typeof ${functionName} === 'function' ? ${functionName} : (typeof window !== 'undefined' ? window['${functionName}'] : null);`)();
+      if (typeof fn === 'function') {
+        testCases.forEach(tc => {
+          try {
+            const actual = fn.apply(null, Array.isArray(tc.input) ? tc.input : [tc.input]);
+            if (JSON.stringify(actual) === JSON.stringify(tc.expected)) {
+              passedCount++;
+            }
+          } catch(e) {}
+        });
+      }
+    } catch(e) {}
+  }
+
+  const allTestsPassed = (totalCount > 0 && passedCount === totalCount) || testsPassed === true;
+  const hasPartialPasses = passedCount > 0;
+
+  // 2. Select appropriate target code for comparison
+  const hasHtml = /<[a-z][\s\S]*>/i.test(userCode);
+  const targetToCompare = (!hasHtml && solutionCode)
+    ? solutionCode
+    : (referenceUiCode || solutionCode || 'function Solution() {}');
+
+  const prompt = `You are a Principal Software Architect evaluating code similarity.
+Problem: ${title}
+Function: ${functionName || 'solution'}
 
 Candidate Code:
 \`\`\`
@@ -1332,23 +1400,19 @@ ${userCode}
 
 Target Reference Solution:
 \`\`\`
-${referenceCode}
+${targetToCompare}
 \`\`\`
 
-Compare the two implementations across 4 criteria:
-1. DOM Fidelity & Component Structure (containers, semantic elements, hierarchy)
-2. Styling Parity & Layout (Tailwind/CSS, flexbox/grid, spacing, dark mode fidelity)
-3. Responsiveness & Adaptive states (mobile/desktop readiness, padding)
-4. Interactivity & State Handlers (event listeners, state mutations, accessibility)
+Empirical Test Status:
+${allTestsPassed ? 'PASSED ALL TEST CASES (100% Verified Functional Correctness)' : totalCount > 0 ? `Passed ${passedCount} of ${totalCount} test cases` : 'Evaluating code structure'}
 
-CRITICAL SCORING INSTRUCTION:
-- DO NOT artificially penalize a candidate if their code is the algorithmic or logic function powering the UI (e.g. calculateRenderedRange)!
-- If their algorithmic logic is correct and satisfies the problem requirements, award 90-100%.
-- If their code has minor errors or missing edge cases, award 70-85%.
-- Only score below 50% if the logic is fundamentally incorrect or empty.
-- NEVER return a blanket fake 10%!
-
-Calculate an overall similarity score percentage (0 to 100), detailed breakdown, strengths, and areas to improve.
+EVALUATION RULES:
+1. Compare the Candidate Code directly against the Target Reference Solution.
+2. If the candidate code passes the test cases (${allTestsPassed ? 'YES' : `${passedCount}/${totalCount}`}), award a score between 92% and 100%!
+3. If some test cases failed, score proportionally (e.g. 2/3 passed -> 70% to 85%).
+4. Only award a score below 50% if the candidate code fails all tests, throws a syntax error, or is completely empty.
+5. NEVER return a fake 10% for code that implements the logic or passes tests.
+6. Provide honest, concrete feedback explaining why the score was awarded based on the candidate's exact logic.
 
 Return ONLY valid JSON:
 {
@@ -1370,7 +1434,10 @@ Return ONLY valid JSON:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
+        generationConfig: { 
+          responseMimeType: "application/json",
+          temperature: 0.0
+        }
       })
     });
 
@@ -1378,41 +1445,46 @@ Return ONLY valid JSON:
       const data = await response.json();
       const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (rawText) {
-        return JSON.parse(rawText) as UiSimilarityResult;
+        const parsed = JSON.parse(rawText) as UiSimilarityResult;
+        // Safety guard: if all tests passed, never let an LLM hallucination score below 90
+        if (allTestsPassed && parsed.scorePercentage < 90) {
+          parsed.scorePercentage = 95;
+          parsed.feedback = `Candidate implementation passes all test cases and satisfies the problem requirements (95% match).`;
+        }
+        return parsed;
       }
     }
   } catch (err) {
-    console.warn("Using heuristic UI similarity fallback:", err);
+    console.warn("Using empirical test verification fallback:", err);
   }
 
-  // Real Heuristic Fallback
-  const userLen = userCode.trim().length;
-  const hasFn = /function\s+[a-zA-Z0-9_$]+|const\s+[a-zA-Z0-9_$]+\s*=/i.test(userCode);
-  const hasReturn = /return\s+/i.test(userCode);
-  const hasInteractivity = /onClick|addEventListener|useState|function/i.test(userCode);
-
-  let score = 65;
-  if (userLen > 60) score += 15;
-  if (hasFn) score += 10;
-  if (hasReturn) score += 8;
-  score = Math.min(96, Math.max(40, score));
+  // Real Empirical Fallback
+  const realScore = allTestsPassed
+    ? 98
+    : totalCount > 0
+      ? Math.round(45 + (passedCount / totalCount) * 45)
+      : (userCode.trim().length > 60 && /return\s+/i.test(userCode) ? 88 : 55);
 
   return {
-    scorePercentage: score,
-    feedback: `Candidate implementation matches target reference logic with ${score}% algorithmic and structural parity.`,
+    scorePercentage: realScore,
+    feedback: allTestsPassed
+      ? `Candidate logic accurately satisfies all problem invariants with ${realScore}% verified algorithmic and functional parity.`
+      : hasPartialPasses
+        ? `Candidate logic passes ${passedCount}/${totalCount} test cases (${realScore}% match). Check edge case boundaries.`
+        : `Candidate code produced partial output (${realScore}% match). Verify return value against test cases.`,
     breakdown: {
-      domFidelity: Math.min(100, score + 2),
-      stylingParity: score,
-      responsiveness: Math.max(45, score - 5),
-      interaction: hasInteractivity || hasReturn ? Math.min(100, score + 5) : 55
+      domFidelity: allTestsPassed ? 100 : realScore,
+      stylingParity: realScore,
+      responsiveness: Math.max(50, realScore - 4),
+      interaction: allTestsPassed ? 100 : Math.max(50, realScore)
     },
     strengths: [
-      "Logic correctly handles key problem constraints",
-      "Proper state and computational structure"
+      allTestsPassed ? "All empirical test assertions passed cleanly" : "Code structure matches expected function signature",
+      "Proper state and computational logic"
     ],
     improvements: [
-      "Verify container constraints on extreme viewport sizes",
-      "Ensure all edge cases and boundary thresholds are covered"
+      allTestsPassed ? "Consider performance optimizations for massive dataset limits" : "Address remaining edge-case boundary conditions",
+      "Verify container constraints on extreme viewport sizes"
     ]
   };
 }

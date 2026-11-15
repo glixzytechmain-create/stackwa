@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExecutionOutcome, runPythonUiCode, ProblemTestCase } from '../services/codeExecutionService';
-import { generateAiExecutedUiComparison, UiSimilarityResult } from '../services/aiService';
+import { evaluateUiSimilarity, UiSimilarityResult } from '../services/aiService';
 
 interface LiveUiPreviewModalProps {
   isOpen: boolean;
@@ -110,20 +110,19 @@ function injectCandidateCodeIntoUi(referenceCode: string, candidateCode: string,
 </script>
 `;
 
-  // 3. Prepare reactive trigger script that dispatches events after DOM is ready
+  // 3. Prepare reactive trigger script that dispatches events after DOM is ready and keeps candidate interactions reactive
   const reactiveRefreshScript = `
 <script>
   (function() {
+    var isUpdating = false;
     function triggerUpdate() {
+      if (isUpdating) return;
+      isUpdating = true;
       try {
         ${candidateCode}
         if (typeof ${fnName} !== 'undefined') {
           window['${fnName}'] = ${fnName};
         }
-        document.querySelectorAll('input, select, textarea').forEach(function(el) {
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        });
         if (typeof updateUI === 'function') updateUI();
         if (typeof render === 'function') render();
         if (typeof calculate === 'function') calculate();
@@ -131,8 +130,16 @@ function injectCandidateCodeIntoUi(referenceCode: string, candidateCode: string,
         if (typeof renderRange === 'function') renderRange();
       } catch(e) {
         console.warn("Reactive update warning:", e);
+      } finally {
+        isUpdating = false;
       }
     }
+
+    // Attach capturing listeners so dragging sliders, typing inputs, and scrolling dynamically invokes candidate code
+    document.addEventListener('input', function() { setTimeout(triggerUpdate, 0); }, true);
+    document.addEventListener('change', function() { setTimeout(triggerUpdate, 0); }, true);
+    window.addEventListener('scroll', function() { setTimeout(triggerUpdate, 0); }, true);
+
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
       setTimeout(triggerUpdate, 50);
       setTimeout(triggerUpdate, 200);
@@ -582,38 +589,29 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
     }
     setIsCompiling(false);
 
-    // 2. Gemini Live Execution Engine & Real Similarity Evaluation
+    // 2. Real Similarity Evaluation (Pure verbatim candidate execution, zero manipulation)
     if (previewMode === 'side-by-side' || isUiChallenge) {
       setIsEvaluatingSimilarity(true);
-      generateAiExecutedUiComparison({
-        candidateCode: code,
+      evaluateUiSimilarity({
+        userCode: code,
         solutionCode: solutionCode || effectiveReferenceCode,
         referenceUiCode: effectiveReferenceCode,
         problemTitle: title,
-        problemDescription: description,
         functionName,
         testCases,
-        isUiChallenge
-      }).then(aiRes => {
+        testsPassed: outcome?.allPassed
+      }).then(simRes => {
         if (!isMounted) return;
-        if (aiRes.candidateHtml && (aiRes.candidateHtml.includes('<!DOCTYPE') || aiRes.candidateHtml.includes('<html'))) {
-          setSrcDoc(aiRes.candidateHtml);
-        }
-        if (aiRes.referenceHtml && (aiRes.referenceHtml.includes('<!DOCTYPE') || aiRes.referenceHtml.includes('<html'))) {
-          setReferenceSrcDoc(aiRes.referenceHtml);
-        }
-        if (aiRes.similarity) {
-          setSimilarity(aiRes.similarity);
-        }
+        setSimilarity(simRes);
         setIsEvaluatingSimilarity(false);
       }).catch(err => {
-        console.warn("Gemini UI comparison engine error:", err);
+        console.warn("Real similarity evaluation error:", err);
         if (isMounted) setIsEvaluatingSimilarity(false);
       });
     }
 
     return () => { isMounted = false; };
-  }, [isOpen, code, functionName, effectiveLanguage, referenceUiCode, previewMode, title, isUiChallenge, testCases, solutionCode, description]);
+  }, [isOpen, code, functionName, effectiveLanguage, referenceUiCode, previewMode, title, isUiChallenge, testCases, solutionCode, description, outcome]);
 
   const handleManualRunGemini = () => {
     setIsEvaluatingSimilarity(true);
@@ -633,28 +631,19 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
       }
     ` : '');
 
-    generateAiExecutedUiComparison({
-      candidateCode: code,
+    evaluateUiSimilarity({
+      userCode: code,
       solutionCode: solutionCode || effectiveReferenceCode,
       referenceUiCode: effectiveReferenceCode,
       problemTitle: title,
-      problemDescription: description,
       functionName,
       testCases,
-      isUiChallenge
-    }).then(aiRes => {
-      if (aiRes.candidateHtml && (aiRes.candidateHtml.includes('<!DOCTYPE') || aiRes.candidateHtml.includes('<html'))) {
-        setSrcDoc(aiRes.candidateHtml);
-      }
-      if (aiRes.referenceHtml && (aiRes.referenceHtml.includes('<!DOCTYPE') || aiRes.referenceHtml.includes('<html'))) {
-        setReferenceSrcDoc(aiRes.referenceHtml);
-      }
-      if (aiRes.similarity) {
-        setSimilarity(aiRes.similarity);
-      }
+      testsPassed: outcome?.allPassed
+    }).then(simRes => {
+      setSimilarity(simRes);
       setIsEvaluatingSimilarity(false);
     }).catch(err => {
-      console.warn("Manual Gemini run error:", err);
+      console.warn("Manual similarity evaluation error:", err);
       setIsEvaluatingSimilarity(false);
     });
   };
@@ -837,7 +826,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                       <iframe
                         srcDoc={srcDoc}
                         title="Candidate UI Preview"
-                        sandbox="allow-scripts allow-modals"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-pointer-lock"
                         className="w-full flex-1 border-0 bg-neutral-950"
                       />
                     )}
@@ -857,7 +846,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                     <iframe
                       srcDoc={referenceSrcDoc}
                       title="AI Reference UI Standard"
-                      sandbox="allow-scripts allow-modals"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-pointer-lock"
                       className="w-full flex-1 border-0 bg-neutral-950"
                     />
                   </div>
@@ -884,7 +873,7 @@ export const LiveUiPreviewModal: React.FC<LiveUiPreviewModalProps> = ({
                     <iframe
                       srcDoc={srcDoc}
                       title="Live UI Component Sandbox"
-                      sandbox="allow-scripts allow-modals"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-pointer-lock"
                       className="w-full flex-1 border-0 bg-neutral-950"
                     />
                   )}
