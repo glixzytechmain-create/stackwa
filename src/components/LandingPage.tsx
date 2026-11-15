@@ -197,14 +197,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* --------------------------------------------------------- */}
       <header className="relative z-20 border-b border-white/5 bg-black/70 backdrop-blur-xl sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center font-black text-white text-base shadow-lg shadow-rose-600/30">
-              S
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-base tracking-tight leading-none text-white font-mono">Stackwa</span>
-              <span className="text-[10px] text-neutral-400 font-mono tracking-widest uppercase">The Spatial Interview OS</span>
-            </div>
+          <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <img 
+              src="/stackwa-logo.png" 
+              alt="Stackwa" 
+              className="h-8 w-auto object-contain group-hover:opacity-90 transition" 
+            />
+            <span className="hidden sm:inline-block text-[10px] text-neutral-400 font-mono tracking-widest uppercase border border-white/10 px-2 py-0.5 rounded-md bg-white/5">
+              The Spatial Interview OS
+            </span>
           </div>
 
           <nav className="hidden lg:flex items-center space-x-6 text-xs font-semibold text-neutral-400">
@@ -1243,7 +1244,10 @@ function isRateLimitConformant(timestamps, k, windowMs) {
       {/* Footer */}
       <footer className="border-t border-white/5 py-8 text-center text-xs text-neutral-500 font-mono">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <span>Stackwa © 2026 — The Spatial Technical Interview Operating System</span>
+          <div className="flex items-center space-x-2.5">
+            <img src="/stackwa-logo.png" alt="Stackwa" className="h-5 w-auto object-contain opacity-85" />
+            <span>© 2026 — The Spatial Technical Interview Operating System</span>
+          </div>
           <span>Zero Mock Data Policy • Strict In-Browser Sandbox</span>
         </div>
       </footer>

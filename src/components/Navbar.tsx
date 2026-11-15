@@ -58,13 +58,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onNavigateHome}
               title="Return to Home Landing Page"
             >
-              <div className="w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center font-black text-white text-sm shadow-lg shadow-rose-600/30 group-hover:scale-105 transition">
-                S
-              </div>
-              <div>
-                <span className="font-extrabold text-base tracking-tight text-white font-mono">Stackwa</span>
-                <span className="hidden sm:inline-block ml-2 text-[10px] text-neutral-400 font-mono tracking-widest uppercase">OS</span>
-              </div>
+              <img 
+                src="/stackwa-logo.png" 
+                alt="Stackwa" 
+                className="h-8 w-auto object-contain group-hover:opacity-90 transition" 
+              />
+              <span className="hidden sm:inline-block text-[10px] text-neutral-400 font-mono tracking-widest uppercase border border-white/10 px-1.5 py-0.5 rounded-md bg-white/5">
+                OS
+              </span>
             </div>
 
             <button

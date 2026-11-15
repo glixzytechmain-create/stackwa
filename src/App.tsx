@@ -685,8 +685,8 @@ export const App: React.FC = () => {
           {/* Clean Modern Studio Footer */}
           <footer className="border-t border-white/5 bg-black/80 py-6 text-center text-xs text-neutral-500 backdrop-blur-md">
             <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-white font-mono">Stackwa</span>
+              <div className="flex items-center space-x-2.5">
+                <img src="/stackwa-logo.png" alt="Stackwa" className="h-5 w-auto object-contain opacity-85" />
                 <span>• The Spatial Technical Interview Operating System</span>
               </div>
               <div className="font-mono text-[11px] text-neutral-500">
