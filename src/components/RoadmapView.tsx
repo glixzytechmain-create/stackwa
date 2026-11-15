@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Calendar, 
   CheckCircle2, 
@@ -8,10 +8,12 @@ import {
   Layers, 
   Clock,
   Settings,
-  Download
+  Download,
+  ExternalLink,
+  Check
 } from 'lucide-react';
 import { UserInterviewProfile, DayPlan, TabType } from '../types';
-import { downloadRoadmapIcs } from '../services/roadmapService';
+import { downloadRoadmapIcs, exportAllToGoogleCalendar } from '../services/roadmapService';
 
 interface RoadmapViewProps {
   profile: UserInterviewProfile | null;
@@ -28,6 +30,7 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({
   onOpenSettings,
   setActiveTab
 }) => {
+  const [gcalNotification, setGcalNotification] = useState<string | null>(null);
   const completedCount = roadmap.filter(d => d.isCompleted).length;
   const progressPercent = Math.round((completedCount / (roadmap.length || 1)) * 100);
 
@@ -37,6 +40,23 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${details}`;
   };
 
+  const handleExportGoogleCalendar = () => {
+    const res = exportAllToGoogleCalendar(
+      roadmap,
+      profile?.targetCompany || 'Tech Company',
+      profile?.role || 'Software Engineer'
+    );
+    setGcalNotification(res.message);
+  };
+
+  const handleExportIcs = () => {
+    downloadRoadmapIcs(
+      roadmap,
+      profile?.targetCompany || 'Tech Company',
+      profile?.role || 'Software Engineer'
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       
@@ -44,7 +64,7 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({
       <div className="oled-panel rounded-3xl p-8 border border-white/10 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-rose-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="max-w-3xl space-y-4">
+        <div className="max-w-4xl space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
               Personalized Daywise Roadmap
@@ -82,16 +102,46 @@ export const RoadmapView: React.FC<RoadmapViewProps> = ({
               />
             </div>
 
-            {/* Bulk Calendar Export: All Dates at Once */}
-            <button
-              onClick={() => downloadRoadmapIcs(roadmap, profile?.targetCompany || 'Tech Company', profile?.role || 'Software Engineer')}
-              className="ml-auto inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-bold text-xs shadow-lg shadow-sky-600/20 transition active:scale-[0.98]"
-              title="Import all dates at once into Apple Calendar, Google Calendar, or Outlook"
-            >
-              <Download className="w-4 h-4" />
-              <span>Import Entire Roadmap to Calendar (.ics)</span>
-            </button>
+            {/* Dual Bulk Calendar Exports: Google Calendar & Apple/Outlook */}
+            <div className="ml-auto flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={handleExportGoogleCalendar}
+                className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-600/25 transition active:scale-[0.98]"
+                title="Export entire roadmap directly into Google Calendar"
+              >
+                <Calendar className="w-4 h-4 text-white" />
+                <span>Export to Google Calendar</span>
+                <ExternalLink className="w-3 h-3 opacity-80" />
+              </button>
+
+              <button
+                onClick={handleExportIcs}
+                className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-white/10 hover:border-white/20 text-neutral-200 font-bold text-xs transition active:scale-[0.98]"
+                title="Download .ics for Apple Calendar, Outlook, or native calendar apps"
+              >
+                <Download className="w-3.5 h-3.5 text-neutral-400" />
+                <span>Download .ics</span>
+              </button>
+            </div>
           </div>
+
+          {/* Google Calendar Instructions Toast/Banner */}
+          {gcalNotification && (
+            <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-500/40 text-blue-200 text-xs flex items-start justify-between gap-3 animate-fadeIn">
+              <div className="flex items-center space-x-2">
+                <Check className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>
+                  <strong>Google Calendar Export:</strong> We downloaded your roadmap file and opened Google Calendar's import page. Select the downloaded file in Google Calendar to add all {roadmap.length} days at once!
+                </span>
+              </div>
+              <button 
+                onClick={() => setGcalNotification(null)}
+                className="text-blue-400 hover:text-white text-xs underline shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

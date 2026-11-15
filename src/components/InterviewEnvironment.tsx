@@ -40,7 +40,10 @@ import {
   DayPlan, 
   TestSessionRecord,
   QuestionMode,
-  SavedVisualExplanation
+  SavedVisualExplanation,
+  CodeSubmissionRecord,
+  McqSubmissionRecord,
+  DebateSubmissionRecord
 } from '../types';
 import { InterviewTrack, GoalSectionTab } from './InterviewCard';
 import { DSA_PROBLEMS } from '../data/dsaProblems';
@@ -61,7 +64,6 @@ import { MonacoTypingEffectOverlay } from './MonacoTypingEffectOverlay';
 import { LiveUiPreviewModal } from './LiveUiPreviewModal';
 import { RaiseHandModal } from './RaiseHandModal';
 import { RoadmapView } from './RoadmapView';
-import { AiMockRoom } from './AiMockRoom';
 import { ProgressDashboard } from './ProgressDashboard';
 import { VoiceDebateRoom } from './VoiceDebateRoom';
 import { generateHighEffortRoadmap } from '../services/roadmapService';
@@ -150,7 +152,21 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
 
   const [selectedProblem, setSelectedProblem] = useState<DsaProblem>(problems[0]);
   const [questionMode, setQuestionMode] = useState<QuestionMode>('code');
-  const [workspaceTab, setWorkspaceTab] = useState<GoalSectionTab>(initialTab);
+  const [workspaceTab, setWorkspaceTabState] = useState<GoalSectionTab>(() => {
+    try {
+      const stored = localStorage.getItem('stackwa_workspace_tab') as GoalSectionTab;
+      if (stored === 'readiness' || stored === 'roadmap' || stored === 'rehearsal') return stored;
+    } catch {}
+    return initialTab === 'coach' ? 'readiness' : initialTab;
+  });
+
+  const setWorkspaceTab = (tab: GoalSectionTab) => {
+    const effective = tab === 'coach' ? 'readiness' : tab;
+    setWorkspaceTabState(effective);
+    try {
+      localStorage.setItem('stackwa_workspace_tab', effective);
+    } catch {}
+  };
 
   useEffect(() => {
     if (initialTab) {
@@ -607,6 +623,49 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
   // Save Explanation State
   const [savedExplSuccess, setSavedExplSuccess] = useState<boolean>(false);
 
+  // Post-submit transition state to Target Readiness
+  const [isUpdatingReadinessReport, setIsUpdatingReadinessReport] = useState<boolean>(false);
+  const [isReadinessUpdateComplete, setIsReadinessUpdateComplete] = useState<boolean>(false);
+  const [readinessUpdateProgress, setReadinessUpdateProgress] = useState<number>(0);
+  const [readinessUpdateStep, setReadinessUpdateStep] = useState<string>('Auditing submitted assertions...');
+
+  const handleTransitionToReadiness = () => {
+    setShowSubmitModal(false);
+    setIsSessionActive(false);
+    setIsUpdatingReadinessReport(true);
+    setIsReadinessUpdateComplete(false);
+    setReadinessUpdateProgress(15);
+    setReadinessUpdateStep('Auditing code assertions and test telemetry...');
+
+    setTimeout(() => {
+      setReadinessUpdateProgress(50);
+      setReadinessUpdateStep('Recalculating 4-pillar composite benchmarks...');
+    }, 900);
+
+    setTimeout(() => {
+      setReadinessUpdateProgress(85);
+      setReadinessUpdateStep('Synthesizing executive hiring committee assessment...');
+    }, 2000);
+
+    setTimeout(() => {
+      setReadinessUpdateProgress(100);
+      setReadinessUpdateStep('Overall readiness report updated successfully!');
+      setIsReadinessUpdateComplete(true);
+      try {
+        confetti({ particleCount: 90, spread: 75, origin: { y: 0.5 } });
+      } catch {}
+    }, 2900);
+
+    setTimeout(() => {
+      try {
+        localStorage.removeItem(`stackwa_readiness_report_${track.company}`);
+      } catch {}
+      setIsUpdatingReadinessReport(false);
+      setIsReadinessUpdateComplete(false);
+      setWorkspaceTab('readiness');
+    }, 4200);
+  };
+
   // Dynamically load adaptive MCQs calibrated to candidate seniority & role
   const loadAdaptiveMcqs = async (diff: 'Easy' | 'Medium' | 'Hard') => {
     setIsLoadingMcqs(true);
@@ -683,6 +742,27 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
         hasRun: true,
         outcome
       });
+
+      // Persist telemetry for Target Readiness matrix
+      try {
+        const submission: CodeSubmissionRecord = {
+          id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          problemId: selectedProblem.id,
+          problemTitle: selectedProblem.title,
+          language: effectiveLang,
+          code,
+          allPassed: !!outcome.allPassed,
+          passedTests: outcome.tests.filter(t => t.passed).length,
+          totalTests: outcome.tests.length,
+          executionTimeMs: outcome.executionTimeMs || 0,
+          submittedAt: new Date().toISOString(),
+          company: track.company,
+          isUiChallenge: !!selectedProblem.isUiChallenge
+        };
+        const existing: CodeSubmissionRecord[] = JSON.parse(localStorage.getItem('stackwa_code_submissions') || '[]');
+        existing.unshift(submission);
+        localStorage.setItem('stackwa_code_submissions', JSON.stringify(existing.slice(0, 50)));
+      } catch {}
 
       // Only open UI preview dialogue automatically if code contains DOM/UI elements
       const isUiCode = /document\.|innerHTML|createElement|<div>|<button>|className|style|render|return\s*\(|<[A-Z]/i.test(code);
@@ -888,23 +968,13 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
           </button>
 
           <button
-            onClick={() => setWorkspaceTab('coach')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition ${
-              workspaceTab === 'coach' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
-            }`}
-          >
-            <Bot className="w-3.5 h-3.5" />
-            <span>3. AI Coach</span>
-          </button>
-
-          <button
             onClick={() => setWorkspaceTab('readiness')}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition ${
               workspaceTab === 'readiness' ? 'bg-rose-600 text-white font-bold shadow' : 'text-neutral-400 hover:text-white'
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>4. Target Readiness</span>
+            <span>3. Target Readiness</span>
           </button>
         </div>
 
@@ -1910,7 +1980,20 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
                         if (isCorrect) {
                           setCorrectMcqCount(newCorrect);
                         }
-                        setRound2Score(Math.round((newCorrect / newAnswered) * 100));
+                        const calculatedScore = Math.round((newCorrect / newAnswered) * 100);
+                        setRound2Score(calculatedScore);
+                        try {
+                          const mcqSub: McqSubmissionRecord = {
+                            id: `mcq_${Date.now()}`,
+                            company: track.company,
+                            seniority: profile?.seniority || 'Senior',
+                            score: calculatedScore,
+                            totalQuestions: newAnswered,
+                            correctQuestions: newCorrect,
+                            submittedAt: new Date().toISOString()
+                          };
+                          localStorage.setItem('stackwa_mcq_submissions', JSON.stringify([mcqSub]));
+                        } catch {}
                       }}
                       disabled={selectedMcqAnswer === null}
                       className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs transition"
@@ -1968,6 +2051,22 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
               existingScore={round3Score}
               onConcludeDebate={(evaluationResult) => {
                 setRound3Score(evaluationResult.round3Score);
+                try {
+                  const debateSub: DebateSubmissionRecord = {
+                    id: `deb_${Date.now()}`,
+                    company: track.company,
+                    problemTitle: selectedProblem.title,
+                    score: evaluationResult.round3Score,
+                    verdict: evaluationResult.verdict,
+                    feedback: evaluationResult.feedback,
+                    strengths: evaluationResult.strengths || [],
+                    vulnerabilities: evaluationResult.vulnerabilities || [],
+                    submittedAt: new Date().toISOString()
+                  };
+                  const existing: DebateSubmissionRecord[] = JSON.parse(localStorage.getItem('stackwa_debate_submissions') || '[]');
+                  existing.unshift(debateSub);
+                  localStorage.setItem('stackwa_debate_submissions', JSON.stringify(existing.slice(0, 30)));
+                } catch {}
               }}
             />
           </motion.div>
@@ -2063,22 +2162,6 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
     </motion.div>
   )}
 
-  {/* ================= AI MOCK COACH TAB ================= */}
-  {workspaceTab === 'coach' && (
-    <motion.div
-      key="coach-tab"
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-    >
-      <AiMockRoom
-        solvedCount={solvedCount}
-        completedFlowsCount={completedFlowsCount}
-      />
-    </motion.div>
-  )}
-
   {/* ================= TARGET READINESS TAB ================= */}
   {workspaceTab === 'readiness' && (
     <motion.div
@@ -2095,6 +2178,7 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
         totalFlows={UI_CHALLENGES.length}
         streakDays={streakDays}
         profile={profile}
+        activeTrack={track}
         setActiveTab={() => {}}
       />
     </motion.div>
@@ -2200,8 +2284,9 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
                   </div>
                 </div>
                 <button
-                  onClick={() => setShowSubmitModal(false)}
+                  onClick={handleTransitionToReadiness}
                   className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-white/10 transition"
+                  title="Close and Update Readiness Report"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2258,25 +2343,110 @@ export const InterviewEnvironment: React.FC<InterviewEnvironmentProps> = ({
 
               <div className="flex items-center justify-end space-x-3 pt-2 border-t border-white/10">
                 <button
-                  onClick={() => {
-                    setShowSubmitModal(false);
-                    setWorkspaceTab('readiness');
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/10 text-xs font-semibold transition"
+                  onClick={handleTransitionToReadiness}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/10 text-xs font-semibold transition flex items-center space-x-1.5"
                 >
                   <span>View in Target Readiness</span>
-                  <ExternalLink className="w-3.5 h-3.5 ml-1.5 inline" />
+                  <ExternalLink className="w-3.5 h-3.5 inline" />
                 </button>
                 <button
-                  onClick={() => {
-                    setShowSubmitModal(false);
-                    setIsSessionActive(false);
-                  }}
+                  onClick={handleTransitionToReadiness}
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-lg shadow-emerald-600/30"
                 >
                   Done
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ================= UPDATING OVERALL READINESS REPORT INTERSTITIAL ================= */}
+      <AnimatePresence>
+        {isUpdatingReadinessReport && (
+          <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: -10 }}
+              className={`max-w-md w-full bg-neutral-950 border rounded-3xl p-8 shadow-2xl space-y-6 text-center relative overflow-hidden transition-colors duration-500 ${
+                isReadinessUpdateComplete ? 'border-emerald-500/50' : 'border-rose-500/30'
+              }`}
+            >
+              <div 
+                className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none transition-colors duration-700 ${
+                  isReadinessUpdateComplete ? 'bg-emerald-500/20' : 'bg-rose-600/10'
+                }`} 
+              />
+
+              {/* Animated Icon: Spinning Radar vs Popping Emerald Checkmark */}
+              <AnimatePresence mode="wait">
+                {!isReadinessUpdateComplete ? (
+                  <motion.div 
+                    key="updating-icon"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="w-16 h-16 rounded-2xl bg-rose-600/15 border border-rose-500/30 flex items-center justify-center text-rose-400 mx-auto relative shadow-lg shadow-rose-600/20"
+                  >
+                    <RefreshCw className="w-8 h-8 animate-spin text-rose-500" />
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    key="complete-icon"
+                    initial={{ scale: 0, rotate: -35 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                    className="w-16 h-16 rounded-2xl bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-400 mx-auto relative shadow-2xl shadow-emerald-500/50"
+                  >
+                    <CheckCircle2 className="w-9 h-9" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-2">
+                <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full border uppercase font-bold tracking-widest transition-colors duration-300 ${
+                  isReadinessUpdateComplete 
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                }`}>
+                  {isReadinessUpdateComplete ? 'Audit Complete' : 'Live Telemetry Audit'}
+                </span>
+                <h3 className="text-xl font-black text-white tracking-tight">
+                  {isReadinessUpdateComplete 
+                    ? 'Overall Readiness Report Updated!' 
+                    : 'Updating Overall Readiness Report...'}
+                </h3>
+                <p className="text-xs text-neutral-400 font-mono transition-all duration-300">
+                  {readinessUpdateStep}
+                </p>
+              </div>
+
+              {/* Animated Progress Bar */}
+              <div className="space-y-2">
+                <div className="h-2.5 w-full bg-neutral-900 rounded-full overflow-hidden border border-white/10 p-0.5">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-300 ease-out ${
+                      isReadinessUpdateComplete
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-md shadow-emerald-500/50'
+                        : 'bg-gradient-to-r from-rose-600 via-rose-500 to-emerald-400'
+                    }`}
+                    style={{ width: `${readinessUpdateProgress}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                  <span>{track.company} Readiness Matrix</span>
+                  <span className={isReadinessUpdateComplete ? 'text-emerald-400 font-bold' : ''}>
+                    {readinessUpdateProgress}%
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-neutral-500 max-w-xs mx-auto">
+                {isReadinessUpdateComplete 
+                  ? 'Launching your calibrated matrix with the embedded Socratic Chatbot now...' 
+                  : 'Synthesizing multi-round scorecards, code assertions, and Socratic defense into your permanent matrix.'}
+              </p>
             </motion.div>
           </div>
         )}

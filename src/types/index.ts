@@ -183,3 +183,58 @@ export interface InterviewClarifyingQuestion {
   timestamp: string;
 }
 
+export interface CodeSubmissionRecord {
+  id: string;
+  problemId: string;
+  problemTitle: string;
+  language: string;
+  code: string;
+  allPassed: boolean;
+  passedTests: number;
+  totalTests: number;
+  executionTimeMs: number;
+  submittedAt: string;
+  company?: string;
+  isUiChallenge?: boolean;
+  similarityScore?: number;
+}
+
+export interface McqSubmissionRecord {
+  id: string;
+  company: string;
+  seniority: string;
+  score: number;
+  totalQuestions: number;
+  correctQuestions: number;
+  submittedAt: string;
+  topics?: string[];
+}
+
+export interface DebateSubmissionRecord {
+  id: string;
+  company: string;
+  problemTitle: string;
+  score: number;
+  verdict: string;
+  feedback: string;
+  strengths: string[];
+  vulnerabilities: string[];
+  submittedAt: string;
+}
+
+export interface ComprehensiveReadinessReport {
+  overallScore: number;
+  hiringVerdict: 'Strong Hire' | 'Hire' | 'Lean Hire' | 'Needs Calibration';
+  executiveSummary: string;
+  pillarBreakdown: {
+    algorithmic: number;
+    architecture: number;
+    verbalDefense: number;
+    uiFidelity: number;
+  };
+  keyStrengths: string[];
+  criticalVulnerabilities: string[];
+  recommendedActionPlan: string[];
+  analyzedAt: string;
+}
+

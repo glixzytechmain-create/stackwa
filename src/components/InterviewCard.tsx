@@ -92,7 +92,7 @@ export const InterviewCard: React.FC<InterviewCardProps> = ({ track, onEnter }) 
               ))}
             </div>
 
-            {/* Dedicated Company Card Quick Nav: Roadmap, Coach, Readiness */}
+            {/* Dedicated Company Card Quick Nav: Roadmap, Readiness */}
             <div className="pt-2 flex items-center space-x-1.5">
               <button
                 onClick={(e) => {
@@ -109,22 +109,10 @@ export const InterviewCard: React.FC<InterviewCardProps> = ({ track, onEnter }) 
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onEnter(track, 'coach');
-                }}
-                className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-white/10 hover:border-white/20 text-[10px] text-neutral-300 font-mono transition"
-                title={`Open ${track.company} Voice AI Coach`}
-              >
-                <Bot className="w-3 h-3 text-sky-400" />
-                <span>AI Coach</span>
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
                   onEnter(track, 'readiness');
                 }}
                 className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-white/10 hover:border-white/20 text-[10px] text-neutral-300 font-mono transition"
-                title={`Open ${track.company} Readiness Radar`}
+                title={`Open ${track.company} Readiness Report & Socratic Chatbot`}
               >
                 <BarChart3 className="w-3 h-3 text-emerald-400" />
                 <span>Readiness</span>

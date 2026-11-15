@@ -122,22 +122,122 @@ const DEFAULT_GOALS: InterviewTrack[] = [
   }
 ];
 
+// Helper to read initial view from URL hash/query or localStorage
+const getInitialRouteState = () => {
+  if (typeof window === 'undefined') {
+    return {
+      view: 'landing' as 'landing' | 'studio',
+      tab: 'dsa' as TabType,
+      trackId: null as string | null,
+      goalTab: 'rehearsal' as GoalSectionTab
+    };
+  }
+
+  try {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    const paramStr = hash.includes('?') ? hash.split('?')[1] : search.replace(/^\?/, '');
+    const params = new URLSearchParams(paramStr);
+
+    const storedView = localStorage.getItem('stackwa_current_view');
+    const storedTab = localStorage.getItem('stackwa_active_tab') as TabType;
+    const storedTrackId = localStorage.getItem('stackwa_active_track_id');
+    const storedGoalTab = localStorage.getItem('stackwa_goal_tab') as GoalSectionTab;
+
+    // Check if hash or query indicates studio
+    const isStudio = hash.startsWith('#studio') || params.get('view') === 'studio' || storedView === 'studio';
+    const isHome = hash === '#home' || params.get('view') === 'home' || storedView === 'landing';
+
+    const view: 'landing' | 'studio' = (isHome && !hash.startsWith('#studio')) ? 'landing' : (isStudio ? 'studio' : 'landing');
+    const tab: TabType = (params.get('tab') as TabType) || (storedTab && storedTab !== 'mock-interview' ? storedTab : 'dsa');
+    const trackId: string | null = params.get('track') || storedTrackId || null;
+    const rawGoalTab = params.get('wtab') || storedGoalTab || 'rehearsal';
+    const goalTab: GoalSectionTab = rawGoalTab === 'coach' ? 'readiness' : (rawGoalTab as GoalSectionTab);
+
+    return { view, tab, trackId, goalTab };
+  } catch {
+    return {
+      view: 'landing' as 'landing' | 'studio',
+      tab: 'dsa' as TabType,
+      trackId: null as string | null,
+      goalTab: 'rehearsal' as GoalSectionTab
+    };
+  }
+};
+
 export const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<'landing' | 'studio'>('landing');
-  const [activeTab, setActiveTab] = useState<TabType>('dsa');
+  const initialRoute = getInitialRouteState();
+  const [currentView, setCurrentView] = useState<'landing' | 'studio'>(initialRoute.view);
+  const [activeTab, setActiveTab] = useState<TabType>(initialRoute.tab);
   const [user, setUser] = useState<User | null>(null);
   const [solvedProblemIds, setSolvedProblemIds] = useState<string[]>(['distributed-rate-limiter']);
   const [completedFlowIds, setCompletedFlowIds] = useState<string[]>(['linear-command-palette']);
   const [streakDays, setStreakDays] = useState<number>(3);
 
   // Personalized Interview Profile, Goals, & Daywise Roadmap
-  const [profile, setProfile] = useState<UserInterviewProfile>(DEFAULT_VISITOR_PROFILE);
-  const [goals, setGoals] = useState<InterviewTrack[]>(DEFAULT_GOALS);
-  const [activeTrack, setActiveTrack] = useState<InterviewTrack | null>(null);
-  const [activeGoalTab, setActiveGoalTab] = useState<GoalSectionTab>('rehearsal');
-  const [roadmap, setRoadmap] = useState<DayPlan[]>(DEFAULT_ROADMAP);
+  const [profile, setProfile] = useState<UserInterviewProfile>(() => {
+    try {
+      const saved = localStorage.getItem('stackwa_interview_profile');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_VISITOR_PROFILE;
+  });
+
+  const [goals, setGoals] = useState<InterviewTrack[]>(() => {
+    try {
+      const saved = localStorage.getItem('stackwa_interview_goals');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_GOALS;
+  });
+
+  const [activeTrack, setActiveTrack] = useState<InterviewTrack | null>(() => {
+    if (!initialRoute.trackId) return null;
+    try {
+      const savedGoals: InterviewTrack[] = JSON.parse(localStorage.getItem('stackwa_interview_goals') || '[]');
+      const all = [...savedGoals, ...DEFAULT_GOALS];
+      return all.find(g => g.id === initialRoute.trackId || g.company.toLowerCase() === initialRoute.trackId?.toLowerCase()) || null;
+    } catch {}
+    return null;
+  });
+
+  const [activeGoalTab, setActiveGoalTab] = useState<GoalSectionTab>(initialRoute.goalTab);
+  const [roadmap, setRoadmap] = useState<DayPlan[]>(() => {
+    try {
+      const saved = localStorage.getItem('stackwa_daywise_roadmap');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_ROADMAP;
+  });
   const [customProblems, setCustomProblems] = useState<DsaProblem[]>([]);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+
+  // Synchronize route and view state to localStorage & URL hash so refresh restores exact page
+  useEffect(() => {
+    try {
+      localStorage.setItem('stackwa_current_view', currentView);
+      localStorage.setItem('stackwa_active_tab', activeTab);
+      if (activeTrack) {
+        localStorage.setItem('stackwa_active_track_id', activeTrack.id);
+      } else {
+        localStorage.removeItem('stackwa_active_track_id');
+      }
+      localStorage.setItem('stackwa_goal_tab', activeGoalTab);
+
+      // Synchronize with URL hash
+      if (currentView === 'studio') {
+        const params = new URLSearchParams();
+        params.set('tab', activeTab);
+        if (activeTrack) {
+          params.set('track', activeTrack.id);
+          params.set('wtab', activeGoalTab);
+        }
+        window.history.replaceState(null, '', `#studio?${params.toString()}`);
+      } else {
+        window.history.replaceState(null, '', '#home');
+      }
+    } catch {}
+  }, [currentView, activeTab, activeTrack, activeGoalTab]);
 
   // Contextual AI prompt triggered from code editor highlight
   const [externalAiPrompt, setExternalAiPrompt] = useState<string | null>(null);
@@ -394,6 +494,21 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleLaunchStudio = () => {
+    setCurrentView('studio');
+    try {
+      localStorage.setItem('stackwa_current_view', 'studio');
+    } catch {}
+  };
+
+  const handleNavigateHome = () => {
+    setCurrentView('landing');
+    try {
+      localStorage.setItem('stackwa_current_view', 'landing');
+      window.history.replaceState(null, '', '#home');
+    } catch {}
+  };
+
   return (
     <div className="relative min-h-screen bg-black text-neutral-100 flex flex-col font-sans selection:bg-rose-600 selection:text-white">
       
@@ -415,7 +530,7 @@ export const App: React.FC = () => {
             className="w-full"
           >
             <LandingPage
-              onLaunchApp={() => setCurrentView('studio')}
+              onLaunchApp={handleLaunchStudio}
               onSignInWithGoogle={() => loginWithGoogle()}
               user={user}
             />
@@ -438,7 +553,7 @@ export const App: React.FC = () => {
             streakDays={streakDays}
             profile={profile}
             onOpenOnboarding={() => setIsOnboardingOpen(true)}
-            onNavigateHome={() => setCurrentView('landing')}
+            onNavigateHome={handleNavigateHome}
           />
 
           {/* Main Content Area */}

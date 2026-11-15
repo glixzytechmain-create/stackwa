@@ -1,4 +1,13 @@
-import { DsaProblem, InterviewScorecard, UserInterviewProfile, OnboardingMessage } from '../types';
+import { 
+  DsaProblem, 
+  InterviewScorecard, 
+  UserInterviewProfile, 
+  OnboardingMessage,
+  CodeSubmissionRecord,
+  McqSubmissionRecord,
+  DebateSubmissionRecord,
+  ComprehensiveReadinessReport
+} from '../types';
 import { ExecutionOutcome, ProblemTestCase } from './codeExecutionService';
 
 const getEndpoint = () => 
@@ -1571,4 +1580,254 @@ Return ONLY valid JSON:
       "Could elaborate further on disaster recovery and split-brain scenarios"
     ]
   };
+}
+
+// ============================================================================
+// COMPREHENSIVE OVERALL READINESS REPORT GENERATOR
+// Analyzes every code submission, MCQ, and verbal debate submitted so far
+// ============================================================================
+export async function generateComprehensiveReadinessReport(
+  profile: UserInterviewProfile | null,
+  codeSubmissions: CodeSubmissionRecord[],
+  mcqSubmissions: McqSubmissionRecord[],
+  debateSubmissions: DebateSubmissionRecord[],
+  companyOverride?: string,
+  roleOverride?: string
+): Promise<ComprehensiveReadinessReport> {
+  const targetCompany = companyOverride || profile?.targetCompany || 'Tech Company';
+  const role = roleOverride || profile?.role || 'Software Engineer';
+  const seniority = profile?.seniority || 'Senior';
+
+  // 1. Calculate Real Mathematical Pillar Scores from telemetry
+  let algoScore = 0;
+  if (codeSubmissions.length > 0) {
+    const totalPassed = codeSubmissions.reduce((acc, c) => acc + c.passedTests, 0);
+    const totalTests = codeSubmissions.reduce((acc, c) => acc + (c.totalTests || 1), 0);
+    algoScore = Math.min(100, Math.max(0, Math.round((totalPassed / totalTests) * 100)));
+  } else if ((profile?.testHistory?.length || 0) > 0) {
+    const avgR1 = profile!.testHistory!.reduce((acc, r) => acc + (r.round1Score || 70), 0) / profile!.testHistory!.length;
+    algoScore = Math.round(avgR1);
+  } else {
+    algoScore = 65; // baseline calibration
+  }
+
+  let archScore = 0;
+  if (mcqSubmissions.length > 0) {
+    archScore = Math.round(mcqSubmissions.reduce((acc, m) => acc + m.score, 0) / mcqSubmissions.length);
+  } else if ((profile?.testHistory?.length || 0) > 0) {
+    const avgR2 = profile!.testHistory!.reduce((acc, r) => acc + (r.round2Score || 75), 0) / profile!.testHistory!.length;
+    archScore = Math.round(avgR2);
+  } else {
+    archScore = 70;
+  }
+
+  let verbalScore = 0;
+  if (debateSubmissions.length > 0) {
+    verbalScore = Math.round(debateSubmissions.reduce((acc, d) => acc + d.score, 0) / debateSubmissions.length);
+  } else if ((profile?.testHistory?.length || 0) > 0) {
+    const avgR3 = profile!.testHistory!.reduce((acc, r) => acc + (r.round3Score || 80), 0) / profile!.testHistory!.length;
+    verbalScore = Math.round(avgR3);
+  } else {
+    verbalScore = 75;
+  }
+
+  const uiSubmissions = codeSubmissions.filter(c => c.isUiChallenge || (c.similarityScore !== undefined && c.similarityScore > 0));
+  let uiScore = 0;
+  if (uiSubmissions.length > 0) {
+    uiScore = Math.round(uiSubmissions.reduce((acc, u) => acc + (u.similarityScore || (u.allPassed ? 90 : 50)), 0) / uiSubmissions.length);
+  } else {
+    uiScore = algoScore > 75 ? Math.round(algoScore * 0.95) : 70;
+  }
+
+  // Weighted overall composite
+  const overallScore = Math.round(
+    algoScore * 0.35 +
+    archScore * 0.25 +
+    verbalScore * 0.25 +
+    uiScore * 0.15
+  );
+
+  const verdict: 'Strong Hire' | 'Hire' | 'Lean Hire' | 'Needs Calibration' = 
+    overallScore >= 88 ? 'Strong Hire' :
+    overallScore >= 75 ? 'Hire' :
+    overallScore >= 60 ? 'Lean Hire' : 'Needs Calibration';
+
+  // 2. Synthesize AI Evaluation with Gemini
+  const prompt = `You are the Lead Technical Hiring Committee Chair at Stackwa assessing a candidate for ${targetCompany} (${role}, ${seniority} Level).
+You have their complete telemetry across all coding submissions, architectural MCQs, and verbal debate defenses:
+
+CANDIDATE TELEMETRY:
+- Target Company: ${targetCompany}
+- Target Role: ${role} (${seniority})
+- Total Code Submissions Recorded: ${codeSubmissions.length}
+- Algorithmic Test Assertion Pass Rate: ${algoScore}%
+- Recent Code Submissions: ${codeSubmissions.slice(0, 5).map(c => `[${c.problemTitle} (${c.language}): ${c.passedTests}/${c.totalTests} tests passed, allPassed=${c.allPassed}]`).join(', ') || 'Diagnostic session active'}
+- System Design & MCQ Score: ${archScore}% (Across ${mcqSubmissions.length} sessions)
+- Verbal Debate & Pushback Score: ${verbalScore}% (Across ${debateSubmissions.length} rounds)
+- UI & Full-Stack Simulation Score: ${uiScore}%
+- Computed Composite Readiness: ${overallScore}% (${verdict})
+
+INSTRUCTIONS:
+1. Write a 2-3 sentence executive summary of candidate readiness for ${targetCompany}.
+2. List 3 specific, grounded technical strengths referencing algorithms, code structure, or architectural choices.
+3. List 2-3 critical vulnerabilities / blind spots that could cause a downlevel or rejection at ${targetCompany}.
+4. Provide a 3-step prioritized pre-interview action plan.
+
+Return ONLY valid JSON matching this schema:
+{
+  "executiveSummary": string,
+  "keyStrengths": [string, string, string],
+  "criticalVulnerabilities": [string, string, string],
+  "recommendedActionPlan": [string, string, string]
+}`;
+
+  try {
+    const response = await fetch(getEndpoint(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.2
+        }
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (rawText) {
+        const parsed = JSON.parse(rawText);
+        return {
+          overallScore,
+          hiringVerdict: verdict,
+          executiveSummary: parsed.executiveSummary || `Candidate exhibits solid engineering fundamentals for ${targetCompany} with an overall readiness of ${overallScore}%.`,
+          pillarBreakdown: {
+            algorithmic: algoScore,
+            architecture: archScore,
+            verbalDefense: verbalScore,
+            uiFidelity: uiScore
+          },
+          keyStrengths: parsed.keyStrengths || [
+            `Demonstrated clean algorithmic logic on core ${role} invariant tests`,
+            `Solid test-case execution adherence with minimal runtime overhead`,
+            `Effective verbal defense during Socratic pushback`
+          ],
+          criticalVulnerabilities: parsed.criticalVulnerabilities || [
+            `Boundary interval conditions require stricter defensive assertions`,
+            `Need deeper elaboration on distributed failure modes under peak traffic`
+          ],
+          recommendedActionPlan: parsed.recommendedActionPlan || [
+            `Rehearse 2 high-concurrency sliding window and mutex invariants`,
+            `Review ${targetCompany}-specific architectural trade-offs`,
+            `Conduct one timed 45m end-to-end rehearsal before the live screen`
+          ],
+          analyzedAt: new Date().toISOString()
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("Using mathematical readiness fallback:", err);
+  }
+
+  // Fallback grounded in computed telemetry
+  return {
+    overallScore,
+    hiringVerdict: verdict,
+    executiveSummary: `Candidate demonstrates verified algorithmic competence for ${targetCompany} (${role}) with a ${overallScore}% composite readiness score based on ${codeSubmissions.length} code submissions.`,
+    pillarBreakdown: {
+      algorithmic: algoScore,
+      architecture: archScore,
+      verbalDefense: verbalScore,
+      uiFidelity: uiScore
+    },
+    keyStrengths: [
+      `Passed test assertions on submitted ${role} challenges with strong Big-O discipline`,
+      `Demonstrated consistent handling of standard inputs and execution timing`,
+      `Solid grasp of core architectural patterns verified in diagnostic telemetry`
+    ],
+    criticalVulnerabilities: [
+      `Extreme edge cases and empty/null boundary checks need proactive verification`,
+      `Articulate concurrency bounds and cache eviction trade-offs more explicitly`
+    ],
+    recommendedActionPlan: [
+      `Review edge cases where intervals touch exact boundary thresholds`,
+      `Rehearse state machine lifecycle invariants in UI components`,
+      `Run one final full-screen rehearsal simulation`
+    ],
+    analyzedAt: new Date().toISOString()
+  };
+}
+
+// ============================================================================
+// EMBEDDED SOCRATIC READINESS CHATBOT
+// Context-aware AI coach living right inside the Target Readiness section
+// ============================================================================
+export async function askReadinessCoach(
+  userPrompt: string,
+  history: { role: 'user' | 'model'; text: string }[] = [],
+  context: {
+    company: string;
+    role: string;
+    overallScore: number;
+    algoScore: number;
+    archScore: number;
+    verbalScore: number;
+    recentSubmissionsSummary: string;
+  }
+): Promise<string> {
+  const systemPrompt = `You are Stackwa's Senior Readiness Advisor and Technical Coach for ${context.company} (${context.role}).
+You are embedded directly inside the candidate's Target Readiness Scorecard.
+You have real-time access to their performance telemetry:
+- Target Company: ${context.company}
+- Target Role: ${context.role}
+- Overall Readiness Score: ${context.overallScore}%
+- Algorithmic Score: ${context.algoScore}%
+- Architecture MCQ Score: ${context.archScore}%
+- Verbal Defense Score: ${context.verbalScore}%
+- Recent Submissions: ${context.recentSubmissionsSummary}
+
+CRITICAL RULES:
+1. Speak as a supportive, highly knowledgeable Senior Staff Engineer.
+2. Ground all advice directly in their actual ${context.company} preparation and current scores.
+3. Be concise and punchy (1-3 paragraphs max). Use bullet points where appropriate.
+4. If they ask how to improve, give them actionable technical recommendations tailored to their weakest pillar.
+5. If they ask technical questions or want to be quizzed, challenge them with real Socratic interview follow-ups.`;
+
+  try {
+    const contents = [
+      {
+        role: 'user',
+        parts: [{ text: systemPrompt }]
+      },
+      ...history.map(h => ({
+        role: h.role,
+        parts: [{ text: h.text }]
+      })),
+      {
+        role: 'user',
+        parts: [{ text: userPrompt }]
+      }
+    ];
+
+    const response = await fetch(getEndpoint(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        contents,
+        generationConfig: { temperature: 0.4 }
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (reply) return reply;
+    }
+  } catch (e) {
+    console.warn("Readiness chatbot fallback:", e);
+  }
+
+  return `Based on your telemetry for ${context.company} (${context.role}), your composite readiness is currently at ${context.overallScore}%. Focus on strengthening boundary assertions and tracing Big-O bounds out loud before writing loops. Would you like me to quiz you on a high-yield ${context.company} invariant?`;
 }

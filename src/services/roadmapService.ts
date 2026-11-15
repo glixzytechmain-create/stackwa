@@ -188,3 +188,37 @@ export function downloadRoadmapIcs(
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// Dedicated 1-click export of entire roadmap to Google Calendar
+export function exportAllToGoogleCalendar(
+  roadmap: DayPlan[],
+  company: string,
+  role: string
+): { success: boolean; message: string; filename: string } {
+  const safeName = (company || 'Interview').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `Stackwa_${safeName}_GoogleCalendar.ics`;
+  const icsContent = buildRoadmapIcsString(roadmap, company, role);
+  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  // Direct user to Google Calendar's import page in a new window/tab
+  try {
+    window.open('https://calendar.google.com/calendar/u/0/r/settings/export', '_blank');
+  } catch (e) {
+    console.warn('Could not automatically open Google Calendar settings:', e);
+  }
+
+  return {
+    success: true,
+    message: `Downloaded ${filename} and opened Google Calendar Import settings in a new tab!`,
+    filename
+  };
+}
