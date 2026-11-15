@@ -244,7 +244,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={async () => {
                     const logged = await loginWithGoogle();
-                    if (logged && !logged.isAnonymous) {
+                    if (logged) {
                       onOpenOnboarding();
                     }
                   }}

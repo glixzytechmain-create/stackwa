@@ -283,8 +283,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = subscribeToAuth((currentUser) => {
       setUser(currentUser);
-      if (currentUser && !currentUser.isAnonymous) {
-        // Authenticated user: if on landing, transition straight into Studio and open onboarding greeting
+      if (currentUser) {
+        // Authenticated user (Google or Guest): if on landing, transition straight into Studio and open onboarding greeting
         setCurrentView((prev) => {
           if (prev === 'landing') {
             localStorage.setItem('stackwa_current_view', 'studio');
@@ -328,9 +328,22 @@ export const App: React.FC = () => {
           }
         });
       } else if (!currentUser) {
-        // User logged out: completely reset view state to Landing Page and clear active track
+        // User logged out: completely reset view state to Landing Page, clear projects and local cache
         setCurrentView('landing');
         setActiveTrack(null);
+        setGoals(DEFAULT_GOALS);
+        setProfile(DEFAULT_VISITOR_PROFILE);
+        setRoadmap([]);
+        setSolvedProblemIds([]);
+        setCompletedFlowIds([]);
+        localStorage.removeItem('stackwa_interview_goals');
+        localStorage.removeItem('stackwa_interview_profile');
+        localStorage.removeItem('stackwa_user_goals');
+        localStorage.removeItem('stackwa_daywise_roadmap');
+        localStorage.removeItem('stackwa_solved_problems');
+        localStorage.removeItem('stackwa_completed_flows');
+        localStorage.removeItem('stackwa_active_track_id');
+        localStorage.removeItem('stackwa_active_tab');
         localStorage.setItem('stackwa_current_view', 'landing');
         window.location.hash = '#home';
       }
@@ -533,12 +546,25 @@ export const App: React.FC = () => {
     } catch {}
     setUser(null);
     setActiveTrack(null);
-    setCurrentView('landing');
-    localStorage.setItem('stackwa_current_view', 'landing');
+    setGoals(DEFAULT_GOALS);
+    setProfile(DEFAULT_VISITOR_PROFILE);
+    setRoadmap([]);
+    setSolvedProblemIds([]);
+    setCompletedFlowIds([]);
     try {
+      localStorage.removeItem('stackwa_interview_goals');
+      localStorage.removeItem('stackwa_interview_profile');
+      localStorage.removeItem('stackwa_user_goals');
+      localStorage.removeItem('stackwa_daywise_roadmap');
+      localStorage.removeItem('stackwa_solved_problems');
+      localStorage.removeItem('stackwa_completed_flows');
+      localStorage.removeItem('stackwa_active_track_id');
+      localStorage.removeItem('stackwa_active_tab');
+      localStorage.setItem('stackwa_current_view', 'landing');
       window.location.hash = '#home';
       window.history.replaceState(null, '', '#home');
     } catch {}
+    setCurrentView('landing');
   };
 
   return (
@@ -565,7 +591,7 @@ export const App: React.FC = () => {
               onLaunchApp={handleLaunchStudio}
               onSignInWithGoogle={async () => {
                 const loggedUser = await loginWithGoogle();
-                if (loggedUser && !loggedUser.isAnonymous) {
+                if (loggedUser) {
                   setCurrentView('studio');
                   localStorage.setItem('stackwa_current_view', 'studio');
                   setIsOnboardingOpen(true);
