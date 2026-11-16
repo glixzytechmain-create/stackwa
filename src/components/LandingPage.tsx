@@ -14,12 +14,14 @@ import { voiceService } from '../services/voiceService';
 interface LandingPageProps {
   onLaunchApp: () => void;
   onSignInWithGoogle: () => void;
+  onOpenAuthModal?: () => void;
   user: any;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onLaunchApp,
   onSignInWithGoogle,
+  onOpenAuthModal,
   user
 }) => {
   // -------------------------------------------------------------
@@ -154,7 +156,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </nav>
 
           <div className="flex items-center space-x-3">
-            {user && !user.isAnonymous ? (
+            {user ? (
               <button
                 onClick={onLaunchApp}
                 className="flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition transform hover:-translate-y-0.5"
@@ -165,7 +167,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             ) : (
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={onSignInWithGoogle}
+                  onClick={onOpenAuthModal || onSignInWithGoogle}
                   className="flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-white border border-white/10 transition"
                 >
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
@@ -174,7 +176,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                   </svg>
-                  <span>Google Sign In</span>
+                  <span>Sign In</span>
                 </button>
 
                 <button
@@ -243,7 +245,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           {!user && (
             <button
-              onClick={onSignInWithGoogle}
+              onClick={onOpenAuthModal || onSignInWithGoogle}
               className="px-6 py-4 rounded-2xl text-sm font-semibold bg-neutral-900/90 hover:bg-neutral-800 text-white border border-white/10 transition flex items-center space-x-2.5 backdrop-blur-md"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -252,7 +254,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
               </svg>
-              <span>Continue with Google</span>
+              <span>Sign In / Sign Up</span>
             </button>
           )}
         </motion.div>
@@ -669,10 +671,10 @@ function isRateLimitConformant(timestamps, k, windowMs) {
 
             {!user && (
               <button
-                onClick={onSignInWithGoogle}
+                onClick={onOpenAuthModal || onSignInWithGoogle}
                 className="px-6 py-4 rounded-2xl text-sm font-semibold bg-white/10 hover:bg-white/15 text-white border border-white/15 transition flex items-center space-x-2"
               >
-                <span>Continue with Google</span>
+                <span>Sign In / Sign Up</span>
               </button>
             )}
           </div>

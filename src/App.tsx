@@ -15,6 +15,7 @@ import { InterviewEnvironment } from './components/InterviewEnvironment';
 import { SettingsView } from './components/SettingsView';
 import { CheatsheetView } from './components/CheatsheetView';
 import { ShortcutsView } from './components/ShortcutsView';
+import { AuthModal } from './components/AuthModal';
 import { Building2, Sparkles, Code2 } from 'lucide-react';
 import { TabType, UserInterviewProfile, DayPlan, DsaProblem, TestSessionRecord, SavedVisualExplanation } from './types';
 import { generateHighEffortRoadmap } from './services/roadmapService';
@@ -212,6 +213,7 @@ export const App: React.FC = () => {
   });
   const [customProblems, setCustomProblems] = useState<DsaProblem[]>([]);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // Synchronize route and view state to localStorage & URL hash so refresh restores exact page
   useEffect(() => {
@@ -597,6 +599,7 @@ export const App: React.FC = () => {
                   setIsOnboardingOpen(true);
                 }
               }}
+              onOpenAuthModal={() => setIsAuthModalOpen(true)}
               user={user}
             />
           </motion.div>
@@ -620,6 +623,7 @@ export const App: React.FC = () => {
             onOpenOnboarding={() => setIsOnboardingOpen(true)}
             onNavigateHome={handleNavigateHome}
             onSignOut={handleSignOut}
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
           />
 
           {/* Main Content Area */}
@@ -878,6 +882,18 @@ export const App: React.FC = () => {
         </motion.div>
       )}
       </AnimatePresence>
+
+      {/* Global Authentication Modal (Email Sign-In / Sign-Up + Google + Instant Guest) */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={(authenticatedUser) => {
+          setUser(authenticatedUser);
+          setCurrentView('studio');
+          localStorage.setItem('stackwa_current_view', 'studio');
+          setIsOnboardingOpen(true);
+        }}
+      />
 
     </div>
   );

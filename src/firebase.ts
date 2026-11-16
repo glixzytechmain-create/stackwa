@@ -6,6 +6,9 @@ import {
   signInWithPopup, 
   signOut as fbSignOut, 
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
   type Auth,
   type User 
 } from 'firebase/auth';
@@ -68,6 +71,25 @@ export async function loginWithGoogle(): Promise<User | null> {
       return null;
     }
   }
+}
+
+export async function registerWithEmail(email: string, pass: string, displayName?: string): Promise<User> {
+  if (!auth) throw new Error("Firebase Auth not initialized");
+  const cred = await createUserWithEmailAndPassword(auth, email, pass);
+  if (displayName && cred.user) {
+    try {
+      await updateProfile(cred.user, { displayName });
+    } catch (e) {
+      console.warn("Could not set display name:", e);
+    }
+  }
+  return cred.user;
+}
+
+export async function loginWithEmail(email: string, pass: string): Promise<User> {
+  if (!auth) throw new Error("Firebase Auth not initialized");
+  const cred = await signInWithEmailAndPassword(auth, email, pass);
+  return cred.user;
 }
 
 export async function logoutUser(): Promise<void> {
